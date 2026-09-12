@@ -16,6 +16,22 @@
 
 TDCanvas 将画布编排、节点连接、AI 生成、素材管理和本地 Agent 协作集中在同一个工作空间。应用打开后直接进入无限画布，不再经过独立展示首页；图片与视频能力通过画布节点按需使用，不再提供单独的生图工作台或视频创作台。
 
+## 产品展示
+
+以下为本地运行界面的实拍截图；画布使用示例内容，未执行付费生成。
+
+**深色画布 · 从提示词到图片与视频的节点编排**
+
+![TDCanvas 深色画布与节点连接](docs/images/canvas-dark.png)
+
+**浅色画布 · 同一工作流，自由切换主题**
+
+![TDCanvas 浅色画布](docs/images/canvas-light.png)
+
+**API 接入 · 注册获取密钥，粘贴保存即可连接**
+
+![AI 土豆 API 注册与接入配置](docs/images/api-setup.png)
+
 ## 桌面客户端源码启动
 
 环境要求：Node.js 20+、Rust 1.85+。Windows 需要 Microsoft C++ Build Tools 与 WebView2；macOS 需要 Xcode Command Line Tools。
