@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-select-environment-python"
+description = "Enables the select_environment_python command without any pre-configured scope."
+commands.allow = ["select_environment_python"]
+
+[[permission]]
+identifier = "deny-select-environment-python"
+description = "Denies the select_environment_python command without any pre-configured scope."
+commands.deny = ["select_environment_python"]

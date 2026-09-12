@@ -1,0 +1,88 @@
+{
+    "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+    "productName": "TDCanvas",
+    "version": "0.14.0",
+    "identifier": "com.tdtv.tdcanvas",
+    "build": {
+        "frontendDist": "../dist",
+        "devUrl": "http://127.0.0.1:3000",
+        "beforeDevCommand": "npm run dev",
+        "beforeBuildCommand": "npm run build"
+    },
+    "app": {
+        "macOSPrivateApi": true,
+        "windows": [
+            {
+                "label": "main",
+                "title": "TDCanvas",
+                "url": "/",
+                "width": 1440,
+                "height": 900,
+                "minWidth": 1080,
+                "minHeight": 680,
+                "center": true,
+                "visible": false,
+                "decorations": true,
+                "maximizable": true,
+                "minimizable": true,
+                "closable": true,
+                "theme": "Dark",
+                "backgroundColor": "#0b0d10",
+                "dragDropEnabled": false,
+                "resizable": true,
+                "fullscreen": false
+            },
+            {
+                "label": "splashscreen",
+                "title": "TDCanvas 正在启动",
+                "url": "/splashscreen.html",
+                "width": 680,
+                "height": 360,
+                "center": true,
+                "visible": true,
+                "transparent": true,
+                "decorations": false,
+                "resizable": false,
+                "maximizable": false,
+                "minimizable": false,
+                "closable": false,
+                "focus": false,
+                "focusable": false,
+                "alwaysOnTop": true,
+                "skipTaskbar": true,
+                "shadow": false,
+                "backgroundColor": "#00000000"
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost https:; img-src 'self' asset: http://asset.localhost blob: data: https:; media-src 'self' asset: http://asset.localhost blob: data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'",
+            "devCsp": null,
+            "assetProtocol": {
+                "enable": true,
+                "scope": ["$APPLOCALDATA/media-cache/**/*", "$APPLOCALDATA/comfyui-local/results/**/*"]
+            },
+            "capabilities": ["main-window", "splashscreen"]
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+        "android": {
+            "debugApplicationIdSuffix": ".debug"
+        },
+        "windows": {
+            "webviewInstallMode": {
+                "type": "downloadBootstrapper"
+            },
+            "nsis": {
+                "displayLanguageSelector": true,
+                "languages": ["SimpChinese", "English"],
+                "installMode": "currentUser"
+            }
+        },
+        "macOS": {
+            "minimumSystemVersion": "10.15"
+        }
+    }
+}

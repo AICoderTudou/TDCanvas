@@ -1,0 +1,31 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "main-window",
+    "description": "TDCanvas 主窗口的最小桌面权限",
+    "windows": ["main"],
+    "platforms": ["windows", "macOS"],
+    "permissions": [
+        "core:default",
+        "core:window:allow-set-theme",
+        "core:window:allow-close",
+        "core:window:allow-minimize",
+        "core:window:allow-start-dragging",
+        "core:window:allow-toggle-maximize",
+        {
+            "identifier": "http:default",
+            "allow": [{ "url": "https://api.aitudou.net/**" }]
+        },
+        "dialog:allow-save",
+        "dialog:allow-open",
+        "process:allow-restart",
+        "updater:default",
+        "tdcanvas-comfyui-local:default",
+        "fs:allow-exists",
+        "fs:allow-download-write",
+        {
+            "identifier": "fs:allow-read-file",
+            "allow": [{ "path": "$APPLOCALDATA/media-cache/**/*" }, { "path": "$APPLOCALDATA/comfyui-local/results/**/*" }]
+        },
+        "fs:allow-write-file"
+    ]
+}

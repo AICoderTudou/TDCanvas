@@ -1,0 +1,16 @@
+---
+title: Deploy on Render
+description: Deploy TDCanvas source with Render
+---
+
+# Deploy on Render
+
+TDCanvas does not publish a one-click deployment URL. Deploy from a repository you control:
+
+1. Open the Render dashboard and create a new Blueprint.
+2. Connect the repository that contains your TDCanvas source checkout.
+3. Let Render read the root `render.yaml`, then review and confirm the `tdcanvas` Docker service.
+
+When deployment finishes, open the assigned `.onrender.com` domain.
+
+The default configuration uses Render's free Web Service. It sleeps after a period of inactivity and wakes on the next request. Application data is primarily stored in the browser, and prompt repositories are fetched by the frontend. The free tier is suitable for evaluation; use a production plan or configure WebDAV for longer-term use.

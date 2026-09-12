@@ -1,0 +1,24 @@
+[package]
+name = "tdcanvas-comfyui-local"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+links = "tdcanvas-comfyui-local"
+
+[lib]
+name = "tdcanvas_comfyui_local"
+crate-type = ["rlib"]
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11", default-features = false }
+tauri-plugin-dialog = "2.7"
+tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[build-dependencies]
+tauri-plugin = { version = "2.5", features = ["build"] }

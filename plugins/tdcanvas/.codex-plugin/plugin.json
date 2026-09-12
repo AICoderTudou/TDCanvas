@@ -1,0 +1,28 @@
+{
+  "name": "tdcanvas",
+  "version": "0.1.0",
+  "description": "Use Codex to read and operate TDCanvas through the local TDCanvas Agent MCP server.",
+  "author": {
+    "name": "TDTV"
+  },
+  "license": "AGPL-3.0",
+  "keywords": ["tdcanvas", "canvas", "mcp", "agent"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "TDCanvas",
+    "shortDescription": "Use Codex to operate the current TDCanvas board.",
+    "longDescription": "Connects Codex to the local TDCanvas Agent MCP server so Codex can inspect the current board, create nodes, connect flows, and trigger generation through the web canvas confirmation flow.",
+    "developerName": "TDTV",
+    "category": "Productivity",
+    "capabilities": ["Canvas", "MCP", "Creative Workflow"],
+    "defaultPrompt": [
+      "打开 TDCanvas",
+      "读取当前画布并总结节点结构",
+      "根据选中节点创建一组生图提示词"
+    ],
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
+  }
+}

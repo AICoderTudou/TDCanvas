@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-object-info"
+description = "Enables the object_info command without any pre-configured scope."
+commands.allow = ["object_info"]
+
+[[permission]]
+identifier = "deny-object-info"
+description = "Denies the object_info command without any pre-configured scope."
+commands.deny = ["object_info"]

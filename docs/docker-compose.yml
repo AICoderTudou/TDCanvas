@@ -1,0 +1,6 @@
+services:
+  docs:
+    image: ${TDCANVAS_DOCS_IMAGE:-tdcanvas-docs:local}
+    ports:
+      - "3001:3000"
+    restart: unless-stopped

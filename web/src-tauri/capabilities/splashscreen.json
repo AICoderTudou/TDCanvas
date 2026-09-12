@@ -1,0 +1,8 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "splashscreen",
+    "description": "AITudou 透明启动层的最小 IPC 权限",
+    "windows": ["splashscreen"],
+    "platforms": ["windows", "macOS"],
+    "permissions": ["core:default"]
+}

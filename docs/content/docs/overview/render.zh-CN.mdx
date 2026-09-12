@@ -1,0 +1,26 @@
+---
+title: Render 部署
+description: 使用 Render 部署 TDCanvas 源码
+---
+
+# Render 部署
+
+TDCanvas 当前不提供一键部署链接，请从你自己维护的源码仓库部署。
+
+## 部署步骤
+
+1. 登录 Render 控制台并创建新的 Blueprint。
+2. 连接包含 TDCanvas 源码的自有仓库。
+3. 让 Render 读取仓库根目录的 `render.yaml`，检查并确认其中的 `tdcanvas` Docker 服务。
+
+部署完成后，打开 Render 分配的 `.onrender.com` 域名即可访问。
+
+## 免费版说明
+
+默认使用 Render 免费 Web Service：
+
+- 空闲约 15 分钟后会休眠，下次访问会自动唤醒。
+- 当前主应用数据默认保存在浏览器本地；第三方提示词由浏览器前端直连拉取。
+- 适合体验和演示，不适合长期保存正式数据。
+
+长期使用建议优先部署到 Vercel，或自行配置 WebDAV 同步浏览器本地数据。

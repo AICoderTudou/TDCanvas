@@ -1,0 +1,20 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment."
+permissions = [
+    "allow-select-environment",
+    "allow-select-environment-python",
+    "allow-saved-environments",
+    "allow-remove-environment",
+    "allow-start-environment",
+    "allow-stop-environment",
+    "allow-environment-status",
+    "allow-environment-logs",
+    "allow-system-stats",
+    "allow-object-info",
+    "allow-upload-input",
+    "allow-queue-workflow",
+    "allow-wait-for-execution",
+    "allow-interrupt-execution",
+]

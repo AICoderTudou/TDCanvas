@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AITudou · TDCanvas 正在启动</title>
+        <script type="module" src="/src/splashscreen.ts"></script>
+    </head>
+    <body>
+        <main class="startup-layer" aria-label="AITudou TDCanvas 正在启动">
+            <canvas id="particle-field" class="particle-field" aria-hidden="true"></canvas>
+
+            <section class="startup-lockup">
+                <div id="particle-core" class="particle-core" aria-hidden="true">
+                    <span class="core-pin"><i></i></span>
+                </div>
+
+                <div id="startup-brand" class="startup-brand">
+                    <h1><span>AI</span>Tudou</h1>
+                </div>
+            </section>
+
+            <p class="sr-only" role="status" aria-live="polite">正在启动 TDCanvas 创作引擎</p>
+        </main>
+    </body>
+</html>

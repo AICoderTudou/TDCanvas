@@ -1,0 +1,56 @@
+---
+title: Docker Deployment
+description: Build and deploy TDCanvas from local source with Docker Compose
+---
+
+# Docker Deployment
+
+## Build the application from source
+
+```bash
+cd /path/to/TDCanvas
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+Open `http://localhost:3000`.
+
+After the image has been built as `tdcanvas:local`, the default Compose file can start it again without rebuilding:
+
+```bash
+docker compose up -d
+```
+
+## Documentation image
+
+The documentation in `docs/` is a separate Next.js standalone application with server capabilities.
+
+Build it from the current source:
+
+```bash
+cd docs
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+The main application container serves the built frontend. Canvases, My Assets, settings, and API keys are stored in the browser by default, while prompt repositories are fetched directly by the frontend. No persistent data volume is required for this data.
+
+## Optional analytics
+
+No analytics are enabled by default. A deployment can enable GA4, Baidu Analytics, or both at runtime:
+
+| Variable | Description |
+| --- | --- |
+| `ANALYTICS_GA4_ID` | Google Analytics 4 measurement ID (`G-XXXX`) |
+| `ANALYTICS_BAIDU_ID` | Baidu site ID, the hash after `hm.js?` |
+
+```yaml
+services:
+  app:
+    image: tdcanvas:local
+    ports:
+      - "3000:3000"
+    environment:
+      ANALYTICS_GA4_ID: G-XXXXXXXXXX
+      ANALYTICS_BAIDU_ID: e8263761cc5c32f5f7a855b8203b965a
+```
+
+SPA route changes automatically report page views to enabled providers. Only configure analytics IDs on sites you control, and do not commit them to the repository.

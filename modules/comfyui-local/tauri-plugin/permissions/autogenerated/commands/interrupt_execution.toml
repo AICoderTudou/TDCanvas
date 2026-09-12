@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-interrupt-execution"
+description = "Enables the interrupt_execution command without any pre-configured scope."
+commands.allow = ["interrupt_execution"]
+
+[[permission]]
+identifier = "deny-interrupt-execution"
+description = "Denies the interrupt_execution command without any pre-configured scope."
+commands.deny = ["interrupt_execution"]

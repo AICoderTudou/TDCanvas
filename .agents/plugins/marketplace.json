@@ -1,0 +1,20 @@
+{
+  "name": "tdcanvas-local",
+  "interface": {
+    "displayName": "TDCanvas"
+  },
+  "plugins": [
+    {
+      "name": "tdcanvas",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tdcanvas"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

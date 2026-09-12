@@ -1,0 +1,14 @@
+{
+    "name": "tdcanvas-official-plugins",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "TDCanvas 内置插件的本地集中构建",
+    "scripts": {
+        "build": "node build.mjs"
+    },
+    "devDependencies": {
+        "@tdtv/plugin-sdk": "file:../sdk",
+        "esbuild": "^0.25.0"
+    }
+}

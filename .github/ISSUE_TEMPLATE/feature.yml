@@ -1,0 +1,24 @@
+name: 功能建议
+description: 提交产品或开发需求
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      placeholder: 用户在哪个场景遇到了什么阻碍？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      placeholder: 期望的交互、界面或技术行为。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      placeholder: 满足哪些条件即可认为完成？

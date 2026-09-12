@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-environment-logs"
+description = "Enables the environment_logs command without any pre-configured scope."
+commands.allow = ["environment_logs"]
+
+[[permission]]
+identifier = "deny-environment-logs"
+description = "Denies the environment_logs command without any pre-configured scope."
+commands.deny = ["environment_logs"]

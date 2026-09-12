@@ -1,0 +1,19 @@
+{
+  "name": "@tdcanvas/comfyui-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./contracts": "./dist/contracts/src/index.js",
+    "./core": "./dist/core/src/index.js",
+    "./frontend": "./dist/frontend/src/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test tests/workflow-inspector.test.mjs tests/native-client.test.mjs",
+    "verify": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

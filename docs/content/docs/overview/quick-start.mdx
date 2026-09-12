@@ -1,0 +1,41 @@
+---
+title: Quick Start
+description: Run TDCanvas from local source in a few steps
+---
+
+# Quick Start
+
+TDCanvas is now delivered as a Tauri 2 desktop client. Vite remains the UI build tool, but end users open the native application rather than a browser URL.
+
+## Prerequisites
+
+- Node.js 20+ and Rust 1.85+
+- Windows: Microsoft C++ Build Tools and WebView2
+- macOS: Xcode Command Line Tools
+
+## Run the desktop client from source
+
+```bash
+cd web
+npm install --legacy-peer-deps
+npm run desktop:dev
+```
+
+The TDCanvas loading window appears first and then opens the infinite canvas. `npm run dev` is retained only for frontend UI debugging.
+
+## Package desktop installers
+
+```bash
+cd web
+npm run desktop:package
+```
+
+Choose Windows, macOS, or both. Windows produces an NSIS `.exe`; macOS produces a universal `.app` and `.dmg`; both uses the repository's native Windows/macOS GitHub Actions runners.
+
+## First-time setup
+
+- Open Settings and enter your Aitudou `API_KEY`.
+- Generated media is cached under the operating system's TDCanvas application-data directory.
+- Windows and macOS keep separate local application data unless a later synchronization feature is configured.
+
+The API key and canvas data are local to the desktop application profile. Production distribution still requires platform signing credentials: Windows code signing and Apple signing/notarization.

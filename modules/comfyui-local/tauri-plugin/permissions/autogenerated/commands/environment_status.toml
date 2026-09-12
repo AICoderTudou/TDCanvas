@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-environment-status"
+description = "Enables the environment_status command without any pre-configured scope."
+commands.allow = ["environment_status"]
+
+[[permission]]
+identifier = "deny-environment-status"
+description = "Denies the environment_status command without any pre-configured scope."
+commands.deny = ["environment_status"]

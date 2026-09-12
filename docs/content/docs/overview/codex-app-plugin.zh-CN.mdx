@@ -1,0 +1,105 @@
+---
+title: Codex App 插件
+description: 在 Codex App 中安装并使用本地 TDCanvas 插件
+---
+
+# Codex App 插件
+
+TDCanvas 插件用于连接 Codex 与本机 TDCanvas Agent。安装后，Codex 可以打开本地画布、读取和创建节点、连接工作流并触发生成任务。插件源码位于 `plugins/tdcanvas/`。
+
+插件只使用本地源码和本地链接命令，不依赖远程 npm 包或在线 TDCanvas 站点。
+
+## 准备 TDCanvas Agent
+
+先构建 TDCanvas Agent，并注册一次本地命令：
+
+```bash
+cd canvas-agent
+npm install
+npm run build
+npm link
+```
+
+完成后，插件可以使用 `tdcanvas-agent` 命令。修改 TDCanvas Agent 源码后，需要重新执行 `npm run build`。
+
+## 让 Codex 自动安装
+
+在 TDCanvas 源码仓库中打开 Codex，然后发送：
+
+```text
+请从当前源码安装本地 TDCanvas 插件：构建并链接 canvas-agent，
+把仓库根目录注册为本地 marketplace，安装 tdcanvas@tdcanvas-local，
+校验插件，并告诉我是否需要新建对话来加载 Skill 和 tdcanvas MCP 工具。
+```
+
+## 手动安装
+
+在 macOS 或 Linux 的仓库根目录运行：
+
+```bash
+codex plugin marketplace add "$(pwd)"
+codex plugin add tdcanvas@tdcanvas-local
+```
+
+Windows PowerShell 使用：
+
+```powershell
+codex plugin marketplace add $PWD
+codex plugin add tdcanvas@tdcanvas-local
+```
+
+仓库内 marketplace 已指向 `./plugins/tdcanvas`。安装完成后建议新建一个 Codex 对话，让新的 Skill 和 MCP 工具完整加载。
+
+## 使用插件
+
+新建 Codex 对话后可以直接说：
+
+```text
+打开 TDCanvas，新建画布并连接 Codex。
+```
+
+插件会启动本地 `web/` 前端和 TDCanvas Agent，读取连接地址与 token，打开本地前端并自动创建、连接画布。之后可以继续让 Codex 总结当前画布、根据选中节点创建提示词，或把节点整理成生成工作流。
+
+## 更新插件
+
+修改以下内容后，需要重新安装或刷新插件：
+
+- `plugins/tdcanvas/.codex-plugin/plugin.json`
+- `plugins/tdcanvas/.mcp.json`
+- `plugins/tdcanvas/skills/` 下的技能说明
+- 插件暴露的 MCP 工具、app 元数据或入口脚本
+
+重新安装后建议开启新对话，避免继续使用缓存中的 Skill 和工具。
+
+## 手动排查
+
+插件通过下面的本地链接命令启动 TDCanvas Agent MCP：
+
+```bash
+tdcanvas-agent mcp
+```
+
+需要分别启动各组件时，先在仓库根目录启动前端：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+再在另一个终端启动 TDCanvas Agent：
+
+```bash
+cd canvas-agent
+npm install
+npm run build
+node dist/index.js
+```
+
+从 TDCanvas Agent 输出或 `http://127.0.0.1:17371/config` 读取 `Local URL` 和 `Connect token` 后，打开：
+
+```text
+http://localhost:3000/canvas?mode=new&agentUrl=<Local URL>&agentToken=<Connect token>
+```
+
+`mode=new` 会自动创建画布并连接本地 TDCanvas Agent。

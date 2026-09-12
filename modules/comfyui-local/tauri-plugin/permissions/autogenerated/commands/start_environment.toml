@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-start-environment"
+description = "Enables the start_environment command without any pre-configured scope."
+commands.allow = ["start_environment"]
+
+[[permission]]
+identifier = "deny-start-environment"
+description = "Denies the start_environment command without any pre-configured scope."
+commands.deny = ["start_environment"]

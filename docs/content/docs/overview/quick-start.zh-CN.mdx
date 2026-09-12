@@ -1,0 +1,44 @@
+---
+title: 快速开始
+description: 用最少步骤从本地源码启动 TDCanvas
+---
+
+# 快速开始
+
+TDCanvas 已改为 Tauri 2 桌面客户端。Vite 继续负责构建界面，但用户不再通过浏览器地址使用产品。
+
+## 环境要求
+
+- Node.js 20+、Rust 1.85+
+- Windows：Microsoft C++ Build Tools、WebView2
+- macOS：Xcode Command Line Tools
+
+## 从源码启动桌面客户端
+
+```bash
+cd web
+npm install --legacy-peer-deps
+npm run desktop:dev
+```
+
+启动后会先显示 TDCanvas Loading 动画，再自动进入无限画布，不需要打开浏览器。`npm run dev` 仅保留用于前端 UI 调试。
+
+## 打包桌面安装程序
+
+```bash
+cd web
+npm run desktop:package
+```
+
+脚本可选择 Windows、macOS 或全部：Windows 输出 NSIS `.exe`，Mac 输出 Intel/Apple Silicon 通用 `.app/.dmg`，“全部”使用仓库中的 Windows/macOS GitHub Actions 构建机。
+
+## 首次使用建议
+
+- 打开右上角配置弹窗，填写 Aitudou `API_KEY`。
+- 生成媒体会自动写入当前系统的 TDCanvas 应用数据目录。
+- Windows 与 macOS 默认使用各自独立的本地应用数据。
+
+## 说明
+
+- 画布数据与 API Key 保存在桌面客户端本地配置中。
+- 对外发布正式安装包仍需提供 Windows 代码签名证书以及 Apple Developer 签名、公证凭据。

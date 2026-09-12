@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "tdcanvas": {
+      "command": "tdcanvas-agent",
+      "args": ["mcp"],
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 90
+    }
+  }
+}

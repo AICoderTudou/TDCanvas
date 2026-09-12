@@ -1,0 +1,486 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PermissionFile",
+  "description": "Permission file that can define a default permission, a set of permissions or a list of inlined permissions.",
+  "type": "object",
+  "properties": {
+    "default": {
+      "description": "The default permission set for the plugin",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DefaultPermission"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "set": {
+      "description": "A list of permissions sets defined",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PermissionSet"
+      }
+    },
+    "permission": {
+      "description": "A list of inlined permissions",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Permission"
+      }
+    }
+  },
+  "definitions": {
+    "DefaultPermission": {
+      "description": "The default permission set of the plugin.\n\nWorks similarly to a permission with the \"default\" identifier.",
+      "type": "object",
+      "required": [
+        "permissions"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PermissionSet": {
+      "description": "A set of direct permissions grouped together under a new name.",
+      "type": "object",
+      "required": [
+        "description",
+        "identifier",
+        "permissions"
+      ],
+      "properties": {
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does.",
+          "type": "string"
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PermissionKind"
+          }
+        }
+      }
+    },
+    "Permission": {
+      "description": "Descriptions of explicit privileges of commands.\n\nIt can enable commands to be accessible in the frontend of the application.\n\nIf the scope is defined it can be used to fine grain control the access of individual or multiple commands.",
+      "type": "object",
+      "required": [
+        "identifier"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri internal convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commands": {
+          "description": "Allowed or denied commands when using this permission.",
+          "default": {
+            "allow": [],
+            "deny": []
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Commands"
+            }
+          ]
+        },
+        "scope": {
+          "description": "Allowed or denied scoped when using this permission.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Scopes"
+            }
+          ]
+        },
+        "platforms": {
+          "description": "Target platforms this permission applies. By default all platforms are affected by this permission.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Target"
+          }
+        }
+      }
+    },
+    "Commands": {
+      "description": "Allowed and denied commands inside a permission.\n\nIf two commands clash inside of `allow` and `deny`, it should be denied by default.",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Allowed command.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "description": "Denied command, which takes priority.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Scopes": {
+      "description": "An argument for fine grained behavior control of Tauri commands.\n\nIt can be of any serde serializable type and is used to allow or prevent certain actions inside a Tauri command. The configured scope is passed to the command and will be enforced by the command implementation.\n\n## Example\n\n```json { \"allow\": [{ \"path\": \"$HOME/**\" }], \"deny\": [{ \"path\": \"$HOME/secret.txt\" }] } ```",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Data that defines what is allowed by the scope.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        "deny": {
+          "description": "Data that defines what is denied by the scope. This should be prioritized by validation logic.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      }
+    },
+    "Value": {
+      "description": "All supported ACL values.",
+      "anyOf": [
+        {
+          "description": "Represents a null JSON value.",
+          "type": "null"
+        },
+        {
+          "description": "Represents a [`bool`].",
+          "type": "boolean"
+        },
+        {
+          "description": "Represents a valid ACL [`Number`].",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Number"
+            }
+          ]
+        },
+        {
+          "description": "Represents a [`String`].",
+          "type": "string"
+        },
+        {
+          "description": "Represents a list of other [`Value`]s.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        {
+          "description": "Represents a map of [`String`] keys to [`Value`]s.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      ]
+    },
+    "Number": {
+      "description": "A valid ACL number.",
+      "anyOf": [
+        {
+          "description": "Represents an [`i64`].",
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "description": "Represents a [`f64`].",
+          "type": "number",
+          "format": "double"
+        }
+      ]
+    },
+    "Target": {
+      "description": "Platform target.",
+      "oneOf": [
+        {
+          "description": "MacOS.",
+          "type": "string",
+          "enum": [
+            "macOS"
+          ]
+        },
+        {
+          "description": "Windows.",
+          "type": "string",
+          "enum": [
+            "windows"
+          ]
+        },
+        {
+          "description": "Linux.",
+          "type": "string",
+          "enum": [
+            "linux"
+          ]
+        },
+        {
+          "description": "Android.",
+          "type": "string",
+          "enum": [
+            "android"
+          ]
+        },
+        {
+          "description": "iOS.",
+          "type": "string",
+          "enum": [
+            "iOS"
+          ]
+        }
+      ]
+    },
+    "PermissionKind": {
+      "type": "string",
+      "oneOf": [
+        {
+          "description": "Enables the detect_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-detect-environment",
+          "markdownDescription": "Enables the detect_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the detect_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-detect-environment",
+          "markdownDescription": "Denies the detect_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the environment_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-environment-logs",
+          "markdownDescription": "Enables the environment_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the environment_logs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-environment-logs",
+          "markdownDescription": "Denies the environment_logs command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the environment_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-environment-status",
+          "markdownDescription": "Enables the environment_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the environment_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-environment-status",
+          "markdownDescription": "Denies the environment_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the interrupt_execution command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-interrupt-execution",
+          "markdownDescription": "Enables the interrupt_execution command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the interrupt_execution command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-interrupt-execution",
+          "markdownDescription": "Denies the interrupt_execution command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the object_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-object-info",
+          "markdownDescription": "Enables the object_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the object_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-object-info",
+          "markdownDescription": "Denies the object_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the queue_workflow command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-queue-workflow",
+          "markdownDescription": "Enables the queue_workflow command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the queue_workflow command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-queue-workflow",
+          "markdownDescription": "Denies the queue_workflow command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-environment",
+          "markdownDescription": "Enables the remove_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-environment",
+          "markdownDescription": "Denies the remove_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the saved_environments command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-saved-environments",
+          "markdownDescription": "Enables the saved_environments command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the saved_environments command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-saved-environments",
+          "markdownDescription": "Denies the saved_environments command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the select_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-select-environment",
+          "markdownDescription": "Enables the select_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the select_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-select-environment",
+          "markdownDescription": "Denies the select_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the select_environment_python command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-select-environment-python",
+          "markdownDescription": "Enables the select_environment_python command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the select_environment_python command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-select-environment-python",
+          "markdownDescription": "Denies the select_environment_python command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-environment",
+          "markdownDescription": "Enables the start_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-environment",
+          "markdownDescription": "Denies the start_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-environment",
+          "markdownDescription": "Enables the stop_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-environment",
+          "markdownDescription": "Denies the stop_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the system_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-system-stats",
+          "markdownDescription": "Enables the system_stats command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the system_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-system-stats",
+          "markdownDescription": "Denies the system_stats command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the upload_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-upload-input",
+          "markdownDescription": "Enables the upload_input command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the upload_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-upload-input",
+          "markdownDescription": "Denies the upload_input command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the wait_for_execution command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-wait-for-execution",
+          "markdownDescription": "Enables the wait_for_execution command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the wait_for_execution command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-wait-for-execution",
+          "markdownDescription": "Denies the wait_for_execution command without any pre-configured scope."
+        },
+        {
+          "description": "Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`",
+          "type": "string",
+          "const": "default",
+          "markdownDescription": "Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`"
+        }
+      ]
+    }
+  }
+}

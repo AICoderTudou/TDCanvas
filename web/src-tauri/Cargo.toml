@@ -1,0 +1,41 @@
+[package]
+name = "tdcanvas"
+version = "0.14.0"
+description = "TDCanvas AI infinite canvas desktop client"
+authors = ["TDTV"]
+license = "AGPL-3.0-only"
+repository = ""
+edition = "2024"
+rust-version = "1.85"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "tdcanvas_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# The updater needs a signed release configuration. Keep it out of ordinary
+# local installers so an absent updater config can never prevent app startup.
+desktop-updater = []
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+futures-util = "0.3"
+hex = "0.4"
+log = "0.4"
+reqwest = { version = "0.12", features = ["stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tauri = { version = "2.11.3", features = ["macos-private-api", "protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+tokio = { version = "1", features = ["fs", "io-util", "net", "sync", "time"] }
+tdcanvas-comfyui-local = { path = "../../modules/comfyui-local/tauri-plugin" }

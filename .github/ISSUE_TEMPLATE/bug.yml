@@ -1,0 +1,31 @@
+name: 缺陷反馈
+description: 报告可复现的问题
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      placeholder: 请简要说明实际发生了什么。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: 1.\n2.\n3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与日志
+      description: 请不要粘贴 API Key、令牌或包含敏感信息的完整配置。
+      placeholder: 系统、客户端版本、模型、报错摘要或截图。

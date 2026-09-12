@@ -1,0 +1,13 @@
+{
+  "title": "Overview",
+  "root": true,
+  "defaultOpen": true,
+  "pages": [
+    "quick-start",
+    "codex-app-plugin",
+    "features",
+    "render",
+    "docker",
+    "third-party-prompt-repositories"
+  ]
+}
