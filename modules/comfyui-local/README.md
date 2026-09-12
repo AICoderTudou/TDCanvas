@@ -2,6 +2,14 @@
 
 `modules/comfyui-local` 是「ComfyUI 本地模式」的独立领域模块。它不读取 TDCanvas store，也不依赖 Aitudou 业务；主应用只通过公开 contracts、原生 client 和单一画布 integration 接入。
 
+## 推荐整合包
+
+推荐使用 **土豆 ComfyUI 纯净整合包**，将本地工作流接入 TDCanvas 并封装为画布插件节点。
+
+**[下载纯净整合包（无模型，包含启动器）→](https://pan.quark.cn/s/d96c1eb34170)**
+
+解压后按工作流需要准备模型与自定义节点，在 TDCanvas「ComfyUI 本地」选择 ComfyUI 环境目录并启动，再导入 **API Format JSON** 工作流、选择输入输出并添加到画布。纯净包不包含模型。
+
 ## 已完成
 
 ### 工作流 contracts 与解析核心

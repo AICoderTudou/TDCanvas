@@ -73,6 +73,21 @@ npm run desktop:package
 - TDCanvas Agent：可选的本地 Agent 通道，用于让 Codex 或 Claude Code 读取和操作当前画布。
 - 插件扩展：通过节点插件扩展画布能力；仅应安装来自可信来源的插件。
 
+## ComfyUI 本地画布插件
+
+**推荐使用土豆 ComfyUI 整合包，将本地工作流接入 TDCanvas，封装为可连线、可复用的画布插件节点。**
+
+> **[下载土豆 ComfyUI 纯净整合包（无模型，包含启动器）→](https://pan.quark.cn/s/d96c1eb34170)**
+>
+> 纯净包不包含模型，请按所用工作流准备模型及所需自定义节点。
+
+1. 下载并解压整合包，按工作流需要配置模型与自定义节点。
+2. 在 TDCanvas 的「ComfyUI 本地」中选择整合包的 ComfyUI 环境目录并启动环境。
+3. 导入 ComfyUI **API Format JSON** 工作流，检查依赖，选择要暴露的输入与输出并保存。
+4. 将工作流添加到画布，作为插件节点连接提示词、图片等输入，在画布中运行并查看结果。
+
+更多说明见 [ComfyUI 本地模块](modules/comfyui-local/README.md)。
+
 ## 数据与配置
 
 画布项目、上传素材、生成记录和连接配置默认保存在 TDCanvas 客户端本地。Aitudou 生成结果会在任务完成后立即转存到系统应用数据目录：Windows 为 `%LOCALAPPDATA%/com.tdtv.tdcanvas/media-cache`，macOS 为 `~/Library/Application Support/com.tdtv.tdcanvas/media-cache`。API 密钥保存在当前客户端配置中，请只在受信任的设备上使用。
