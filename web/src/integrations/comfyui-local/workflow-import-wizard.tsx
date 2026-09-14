@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import {
     buildComfyWorkflowDefinition,
     comfyNativeClient,
+    comfyOutputLabel,
     inspectComfyWorkflow,
     parseComfyApiWorkflow,
     type ComfyEnvironmentProfile,
@@ -25,6 +26,93 @@ type Props = {
     onClose: () => void;
     onSaved: (definition: ComfyWorkflowDefinition) => void;
 };
+
+type ExposureEditorProps = {
+    open: boolean;
+    definition: ComfyWorkflowDefinition;
+    onClose: () => void;
+    onSaved: (definition: ComfyWorkflowDefinition) => void;
+};
+
+export function ComfyWorkflowExposureEditor({ open, definition, onClose, onSaved }: ExposureEditorProps) {
+    const { message } = App.useApp();
+    const { t } = useTranslation();
+    const [step, setStep] = useState<"input" | "output">("input");
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [inspection, setInspection] = useState<ComfyWorkflowInspection | null>(null);
+    const [inputIds, setInputIds] = useState<Set<string>>(new Set());
+    const [outputIds, setOutputIds] = useState<Set<string>>(new Set());
+    const [portIds, setPortIds] = useState<Set<string>>(new Set());
+    const [labels, setLabels] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if (!open) return;
+        let disposed = false;
+        setStep("input");
+        setLoading(true);
+        comfyNativeClient
+            .objectInfo()
+            .then((objectInfo) => {
+                if (disposed) return;
+                const next = inspectComfyWorkflow(definition.apiWorkflow, objectInfo);
+                setInspection(next);
+                setInputIds(new Set(definition.inputs.map((input) => input.id)));
+                setOutputIds(new Set(definition.outputs.map((output) => output.id)));
+                setPortIds(new Set([...definition.inputs, ...definition.outputs].filter((item) => item.canvasPort).map((item) => item.id)));
+                setLabels(Object.fromEntries([...next.inputs, ...next.outputs].map((item) => {
+                    const savedLabel = definition.inputs.find((input) => input.id === item.id)?.label || definition.outputs.find((output) => output.id === item.id)?.label;
+                    const label = "outputName" in item ? comfyOutputLabel(item) : item.label;
+                    return [item.id, savedLabel?.toLowerCase() === "filenames" && "outputName" in item && item.resourceType === "video" ? label : savedLabel || label];
+                })));
+            })
+            .catch((error) => message.error(errorMessage(error)))
+            .finally(() => {
+                if (!disposed) setLoading(false);
+            });
+        return () => {
+            disposed = true;
+        };
+    }, [definition, message, open]);
+
+    const save = async () => {
+        if (!inspection) return;
+        const selectedInputs = inspection.inputs.filter((input) => inputIds.has(input.id));
+        const selectedOutputs = inspection.outputs.filter((output) => outputIds.has(output.id));
+        if (!selectedOutputs.length) return message.error(t("comfyuiLocal.editExposure.outputRequired"));
+        setSaving(true);
+        try {
+            const next = buildComfyWorkflowDefinition({
+                id: definition.id,
+                name: definition.name,
+                description: definition.description,
+                environmentId: definition.environmentId,
+                inspection,
+                inputs: selectedInputs.map((source) => ({ source, label: labels[source.id], canvasPort: portIds.has(source.id) })),
+                outputs: selectedOutputs.map((source) => ({ source, label: labels[source.id], canvasPort: portIds.has(source.id), preview: definition.outputs.find((output) => output.id === source.id)?.preview ?? true })),
+            });
+            await saveComfyWorkflowDefinition(next);
+            onSaved(next);
+            message.success(t("comfyuiLocal.editExposure.saved"));
+        } catch (error) {
+            message.error(errorMessage(error));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal open={open} onCancel={onClose} width={920} centered destroyOnHidden title={t("comfyuiLocal.editExposure.title")} footer={[
+            <Button key="cancel" onClick={onClose}>{t("common.cancel")}</Button>,
+            step === "output" ? <Button key="back" onClick={() => setStep("input")}>{t("comfyuiLocal.import.back")}</Button> : null,
+            step === "input" ? <Button key="next" type="primary" disabled={loading || !inspection} onClick={() => setStep("output")}>{t("comfyuiLocal.import.next")}</Button> : <Button key="save" type="primary" loading={saving} disabled={!outputIds.size} onClick={() => void save()}>{t("comfyuiLocal.import.save")}</Button>,
+        ]}>
+            <p className="mb-5 text-[11px] text-stone-500 dark:text-zinc-500">{t("comfyuiLocal.editExposure.description")}</p>
+            {loading ? <div className="grid min-h-[420px] place-items-center"><LoaderCircle className="size-7 animate-spin text-violet-500" /></div> : null}
+            {!loading && inspection ? <SelectionStep kind={step} items={(step === "input" ? inspection.inputs : inspection.outputs).filter((item) => item.exposable)} selected={step === "input" ? inputIds : outputIds} ports={portIds} labels={labels} onSelected={step === "input" ? setInputIds : setOutputIds} onPorts={setPortIds} onLabels={setLabels} /> : null}
+        </Modal>
+    );
+}
 
 export function ComfyWorkflowImportWizard({ open, environment, onClose, onSaved }: Props) {
     const { message } = App.useApp();
@@ -246,7 +334,7 @@ type SelectionProps = {
     onLabels: (value: Record<string, string>) => void;
 };
 
-function SelectionStep({ kind, items, selected, ports, labels, onSelected, onPorts, onLabels }: SelectionProps) {
+export function SelectionStep({ kind, items, selected, ports, labels, onSelected, onPorts, onLabels }: SelectionProps) {
     const { t } = useTranslation();
     const [nodeIdQuery, setNodeIdQuery] = useState("");
     const toggle = (set: Set<string>, id: string, checked: boolean) => new Set(checked ? [...set, id] : [...set].filter((value) => value !== id));

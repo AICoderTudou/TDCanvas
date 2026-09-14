@@ -128,7 +128,7 @@ describe("ComfyUI canvas execution", () => {
         expect(connections[0]).toMatchObject({ fromNodeId: source.id, toNodeId: expect.any(String) });
         expect(mocks.resolveDownloadBlob).toHaveBeenCalledWith(expect.objectContaining({ kind: "image", url: "blob:global-generated-image" }));
         expect(mocks.uploadInput).toHaveBeenCalledWith(workflowWithImageInput.environmentId, "角色参考图.png", "image/png", [1, 2, 3]);
-        expect(mocks.materializeWorkflow).toHaveBeenCalledWith(workflowWithImageInput, expect.any(Object), { "4:image": "global-source.png" });
+        expect(mocks.materializeWorkflow).toHaveBeenCalledWith(workflowWithImageInput, expect.any(Object), { "4:image": "global-source.png" }, new Set());
     });
 });
 

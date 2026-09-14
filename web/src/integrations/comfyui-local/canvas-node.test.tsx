@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 
 import type { ComfyWorkflowDefinition } from "./index";
-import { comfyCanvasPorts, createComfyWorkflowCanvasNode, registerComfyWorkflowCanvasNode } from "./canvas-node";
+import { comfyCanvasPorts, createComfyCanvasNodeSnapshot, createComfyWorkflowCanvasNode, mergeComfyCanvasNodeSnapshot, registerComfyWorkflowCanvasNode } from "./canvas-node";
 
 const definition: ComfyWorkflowDefinition = {
     id: "workflow-rain-city",
@@ -101,5 +101,11 @@ describe("ComfyUI workflow canvas node", () => {
                 },
             },
         });
+    });
+
+    it("keeps current values and bypass switches when exposed inputs are edited", () => {
+        const previous = { ...createComfyCanvasNodeSnapshot(definition), values: { "6:text": "edited", "3:seed": 99 }, inputEnabled: { "6:text": false } };
+        const nextDefinition = { ...definition, inputs: [definition.inputs[0]!] };
+        expect(mergeComfyCanvasNodeSnapshot(nextDefinition, previous)).toMatchObject({ values: { "6:text": "edited" }, inputEnabled: { "6:text": false } });
     });
 });

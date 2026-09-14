@@ -37,9 +37,10 @@ export async function runComfyWorkflowNode(ctx: CanvasNodeContext) {
         ensureResultNodes(ctx, source, definition);
         markSourceAndResults(ctx, "loading", { phase: "preparing", startedAt });
 
-        const connectedValues = await collectConnectedValues(ctx, definition);
+        const disabledInputIds = new Set(definition.inputs.filter((input) => snapshot.inputEnabled?.[input.id] === false).map((input) => input.id));
+        const connectedValues = await collectConnectedValues(ctx, definition, disabledInputIds);
         if (active.canceled) return;
-        const workflow = materializeComfyWorkflow(definition, snapshot.values, connectedValues);
+        const workflow = materializeComfyWorkflow(definition, snapshot.values, connectedValues, disabledInputIds);
         const queued = await comfyNativeClient.queueWorkflow(snapshot.environmentId, workflow);
         active.promptId = queued.promptId;
         markSourceAndResults(ctx, "loading", { phase: "running", promptId: queued.promptId, startedAt });
@@ -69,9 +70,10 @@ export async function stopComfyWorkflowNode(ctx: CanvasNodeContext) {
     markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, completedAt: Date.now() });
 }
 
-async function collectConnectedValues(ctx: CanvasNodeContext, definition: ComfyWorkflowDefinition) {
+async function collectConnectedValues(ctx: CanvasNodeContext, definition: ComfyWorkflowDefinition, disabledInputIds: ReadonlySet<string>) {
     const values: Record<string, unknown> = {};
     for (const input of definition.inputs) {
+        if (disabledInputIds.has(input.id)) continue;
         const objectReference = ctx.node.metadata?.objectReferences?.find((reference) => reference.targetInputId === input.id);
         const connection = objectReference ? undefined : ctx.getInputConnections(input.id)[0];
         if (!objectReference && !connection) continue;
