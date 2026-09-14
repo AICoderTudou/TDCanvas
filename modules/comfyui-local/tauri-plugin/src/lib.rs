@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     fs,
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Stdio,
     sync::{
         Mutex,
@@ -820,10 +820,14 @@ async fn queue_workflow(
 async fn wait_for_execution<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, ComfyProcessManager>,
+    registry: State<'_, EnvironmentRegistry>,
     profile_id: String,
     prompt_id: String,
     outputs: Vec<RequestedOutput>,
+    output_folder: String,
 ) -> Result<ExecutionResult, String> {
+    let profile = registry.profile(&profile_id)?;
+    let comfy_root = PathBuf::from(profile.root_directory);
     let started = Instant::now();
     loop {
         let port = running_profile_port(&state, &profile_id)?;
@@ -848,8 +852,16 @@ async fn wait_for_execution<R: Runtime>(
             let node_outputs = entry.get("outputs").and_then(Value::as_object);
             if completed || node_outputs.is_some_and(|items| !items.is_empty()) {
                 let mapped =
-                    collect_execution_outputs(&app, port, &prompt_id, node_outputs, &outputs)
-                        .await?;
+                    collect_execution_outputs(
+                        &app,
+                        port,
+                        &prompt_id,
+                        node_outputs,
+                        &outputs,
+                        &comfy_root,
+                        &output_folder,
+                    )
+                    .await?;
                 return Ok(ExecutionResult {
                     prompt_id,
                     outputs: mapped,
@@ -945,6 +957,8 @@ async fn collect_execution_outputs<R: Runtime>(
     prompt_id: &str,
     node_outputs: Option<&serde_json::Map<String, Value>>,
     requested: &[RequestedOutput],
+    comfy_root: &Path,
+    output_folder: &str,
 ) -> Result<Vec<ExecutionOutput>, String> {
     let mut results = Vec::new();
     for request in requested {
@@ -988,8 +1002,17 @@ async fn collect_execution_outputs<R: Runtime>(
                     &fallback_descriptor
                 };
                 let cached =
-                    cache_comfy_output(app, port, prompt_id, request, item_index, descriptor)
-                        .await?;
+                    cache_comfy_output(
+                        app,
+                        port,
+                        prompt_id,
+                        request,
+                        item_index,
+                        descriptor,
+                        comfy_root,
+                        output_folder,
+                    )
+                    .await?;
                 results.push(cached);
             } else if request.resource_type == "text" {
                 let text = item
@@ -1057,6 +1080,8 @@ async fn cache_comfy_output<R: Runtime>(
     request: &RequestedOutput,
     item_index: usize,
     descriptor: &Value,
+    comfy_root: &Path,
+    output_folder: &str,
 ) -> Result<ExecutionOutput, String> {
     let filename = descriptor
         .get("filename")
@@ -1070,51 +1095,81 @@ async fn cache_comfy_output<R: Runtime>(
         .get("type")
         .and_then(Value::as_str)
         .unwrap_or("output");
-    let mut url = reqwest::Url::parse(&format!("http://{LOOPBACK_HOST}:{port}/view"))
-        .map_err(|error| format!("无法创建 ComfyUI 输出地址：{error}"))?;
-    url.query_pairs_mut()
-        .append_pair("filename", filename)
-        .append_pair("subfolder", subfolder)
-        .append_pair("type", file_type);
-    let response = local_http_client(Duration::from_secs(30 * 60))?
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| format!("无法下载 ComfyUI 输出 {filename}：{error}"))?
-        .error_for_status()
-        .map_err(|error| format!("ComfyUI 输出下载失败 {filename}：{error}"))?;
-    let response_mime = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.split(';').next().unwrap_or(value).trim().to_owned());
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("无法读取 ComfyUI 输出 {filename}：{error}"))?;
-    if bytes.is_empty() {
-        return Err(format!("ComfyUI 输出 {filename} 为空"));
-    }
-    let directory = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|error| format!("无法定位 TDCanvas 本地数据目录：{error}"))?
-        .join("comfyui-local")
-        .join("results")
-        .join(sanitize_path_segment(prompt_id, "prompt"));
-    tokio::fs::create_dir_all(&directory)
-        .await
-        .map_err(|error| format!("无法创建 ComfyUI 结果目录：{error}"))?;
     let fallback = format!(
         "{}-{}-result.bin",
         sanitize_path_segment(&request.id, "output"),
         item_index + 1
     );
     let safe_filename = sanitize_result_filename(filename, &fallback);
-    let target = unique_result_path(&directory, &safe_filename, item_index);
-    tokio::fs::write(&target, &bytes)
+    let directory = if request.resource_type == "video" {
+        video_output_directory(comfy_root, output_folder)
+    } else {
+        app.path()
+            .app_local_data_dir()
+            .map_err(|error| format!("无法定位 TDCanvas 本地数据目录：{error}"))?
+            .join("comfyui-local")
+            .join("results")
+            .join(sanitize_path_segment(prompt_id, "prompt"))
+    };
+    tokio::fs::create_dir_all(&directory)
         .await
-        .map_err(|error| format!("无法缓存 ComfyUI 输出：{error}"))?;
+        .map_err(|error| format!("无法创建 ComfyUI 结果目录：{error}"))?;
+    if request.resource_type == "video" {
+        app.asset_protocol_scope()
+            .allow_directory(&directory, true)
+            .map_err(|error| format!("无法授权 ComfyUI 视频预览目录：{error}"))?;
+    }
+    let direct_target = directory.join(&safe_filename);
+    let source = (request.resource_type == "video")
+        .then(|| comfy_result_source_path(comfy_root, file_type, subfolder, &safe_filename))
+        .flatten();
+    let target = if source.as_ref() == Some(&direct_target) {
+        direct_target
+    } else {
+        unique_result_path(&directory, &safe_filename, item_index)
+    };
+    let response_mime = if target.exists() {
+        None
+    } else if let Some(source) = source.filter(|path| path.exists()) {
+        tokio::fs::rename(&source, &target)
+            .await
+            .map_err(|error| format!("无法将 ComfyUI 视频移动到画布输出目录：{error}"))?;
+        None
+    } else {
+        let mut url = reqwest::Url::parse(&format!("http://{LOOPBACK_HOST}:{port}/view"))
+            .map_err(|error| format!("无法创建 ComfyUI 输出地址：{error}"))?;
+        url.query_pairs_mut()
+            .append_pair("filename", filename)
+            .append_pair("subfolder", subfolder)
+            .append_pair("type", file_type);
+        let response = local_http_client(Duration::from_secs(30 * 60))?
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| format!("无法下载 ComfyUI 输出 {filename}：{error}"))?
+            .error_for_status()
+            .map_err(|error| format!("ComfyUI 输出下载失败 {filename}：{error}"))?;
+        let response_mime = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.split(';').next().unwrap_or(value).trim().to_owned());
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| format!("无法读取 ComfyUI 输出 {filename}：{error}"))?;
+        if bytes.is_empty() {
+            return Err(format!("ComfyUI 输出 {filename} 为空"));
+        }
+        tokio::fs::write(&target, &bytes)
+            .await
+            .map_err(|error| format!("无法保存 ComfyUI 输出：{error}"))?;
+        response_mime
+    };
+    let bytes = tokio::fs::metadata(&target)
+        .await
+        .map_err(|error| format!("无法读取 ComfyUI 输出文件信息：{error}"))?
+        .len();
     let mime_type = response_mime.or_else(|| mime_from_filename(&safe_filename).map(str::to_owned));
     Ok(ExecutionOutput {
         output_id: request.id.clone(),
@@ -1125,10 +1180,37 @@ async fn cache_comfy_output<R: Runtime>(
         filename: Some(safe_filename),
         mime_type,
         absolute_path: Some(target.to_string_lossy().into_owned()),
-        bytes: Some(bytes.len() as u64),
+        bytes: Some(bytes),
         text: None,
         raw: None,
     })
+}
+
+fn video_output_directory(comfy_root: &Path, output_folder: &str) -> PathBuf {
+    comfy_root
+        .join("output")
+        .join(sanitize_result_filename(output_folder, "TDCanvas"))
+}
+
+fn comfy_result_source_path(
+    comfy_root: &Path,
+    file_type: &str,
+    subfolder: &str,
+    filename: &str,
+) -> Option<PathBuf> {
+    let base = match file_type {
+        "output" => comfy_root.join("output"),
+        "temp" => comfy_root.join("temp"),
+        _ => return None,
+    };
+    let subfolder = Path::new(subfolder);
+    if subfolder
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return None;
+    }
+    Some(base.join(subfolder).join(filename))
 }
 
 fn sanitize_result_filename(value: &str, fallback: &str) -> String {
@@ -1946,6 +2028,15 @@ mod tests {
             "bad_name_.png"
         );
         assert_eq!(mime_from_filename("clip.WEBM"), Some("video/webm"));
+        assert_eq!(
+            video_output_directory(Path::new("ComfyUI"), "测试画布"),
+            PathBuf::from("ComfyUI").join("output").join("测试画布")
+        );
+        assert_eq!(
+            comfy_result_source_path(Path::new("ComfyUI"), "output", "clips/final", "clip.mp4"),
+            Some(PathBuf::from("ComfyUI").join("output").join("clips/final").join("clip.mp4"))
+        );
+        assert!(comfy_result_source_path(Path::new("ComfyUI"), "output", "../escape", "clip.mp4").is_none());
     }
 
     #[test]

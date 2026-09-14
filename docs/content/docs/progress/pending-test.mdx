@@ -8,6 +8,8 @@ description: Implemented changes that still need manual verification
 The current release needs manual verification in these areas:
 
 - A ComfyUI media loader used only by optional downstream inputs should be removed from the submitted graph while its canvas port is disconnected, so stale filenames from the imported API JSON are not submitted. Connecting the port should restore the loader and its references; required downstream inputs must never be bypassed.
+- ComfyUI 工作流参数面板关闭 image、video 或 audio 等媒体输入后，对应画布输入端口及连线应立即隐藏但不删除连接数据；重新打开后应恢复，所有可见输入端口按媒体类型分组并按名称中的数字自然排序对齐。
+- ComfyUI 视频结果应只保存在所选环境的 `output/<画布名>/`：已有 `output` 或 `temp` 文件应移动到该目录，仅能通过 `/view` 获取时应直接写入该目录；结果节点的本地文件路径不得再指向 TDCanvas 的 `comfyui-local/results/<prompt_id>`。
 - An imported ComfyUI workflow node should allow its exposed inputs and outputs to be edited from the parameter panel. Media inputs should offer a Use / Bypass switch; saving should preserve retained values and connections, and remove stale ports, references, and result nodes.
 - Importing an API workflow with VHS Video Combine should expose `VHS_FILENAMES` as video; execution should create a playable, downloadable video result node from the MP4 descriptor in ComfyUI's `gifs` field instead of displaying raw JSON.
 - The production Windows desktop client should connect to TDCanvas Agent on the `127.0.0.1` or `localhost` loopback address, while the desktop CSP continues to reject non-loopback HTTP endpoints.

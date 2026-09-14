@@ -80,6 +80,33 @@ describe("ComfyUI workflow canvas node", () => {
         ]);
     });
 
+    it("hides bypassed input ports and naturally sorts the remaining media ports", () => {
+        const mediaInput = (label: string, valueType: "image" | "audio", nodeId: string): ComfyWorkflowDefinition["inputs"][number] => ({
+            id: `${nodeId}:${label}`,
+            nodeId,
+            field: label,
+            label,
+            valueType,
+            control: "media",
+            defaultValue: "",
+            required: false,
+            canvasPort: true,
+        });
+        const inputs = [mediaInput("image5", "image", "5"), mediaInput("image6", "image", "6"), mediaInput("image10", "image", "10"), mediaInput("image2", "image", "2"), mediaInput("image1", "image", "1"), mediaInput("audio2", "audio", "12"), mediaInput("audio1", "audio", "11")];
+        const ports = comfyCanvasPorts({
+            workflowId: definition.id,
+            environmentId: definition.environmentId,
+            workflowHash: definition.workflowHash,
+            runnable: true,
+            inputs,
+            outputs: definition.outputs,
+            values: {},
+            inputEnabled: { [inputs[1]!.id]: false },
+        });
+
+        expect(ports.map((port) => port.label)).toEqual(["image1", "image2", "image5", "image10", "audio1", "audio2", "Final image"]);
+    });
+
     it("embeds an immutable workflow snapshot when adding the macro to a canvas", () => {
         registerComfyWorkflowCanvasNode();
         const node = createComfyWorkflowCanvasNode(definition, { x: 500, y: 400 });

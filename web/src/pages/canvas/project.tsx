@@ -65,6 +65,7 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
+import { COMFY_WORKFLOW_NODE_TYPE } from "@/integrations/comfyui-local/canvas-node";
 import { buildNodeMentionReferences, reorderCanvasConnections, reorderCanvasObjectReferences, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { readLastUsedNodeConfig, rememberLastUsedNodeConfig } from "@/lib/canvas/canvas-node-preferences";
@@ -739,6 +740,7 @@ function TDCanvasProjectPage() {
     });
 
     const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
+        canvasTitle: currentProject?.title || t("canvas.projectPage.untitledCanvas"),
         effectiveConfig,
         isAiConfigReady,
         openConfigDialog,
@@ -3241,6 +3243,10 @@ function TDCanvasProjectPage() {
 
     const handleRetryNode = useCallback(
         async (node: CanvasNodeData) => {
+            if (node.type === COMFY_WORKFLOW_NODE_TYPE) {
+                buildNodeToolbarItems(node).find((item) => item.id === "comfy-run")?.onClick();
+                return;
+            }
             const sourceNode = findRetrySourceNode(node.id, nodesRef.current, connectionsRef.current) || node;
             const nativeRetryNode = isNativeGenerationNode(node) ? node : isNativeGenerationNode(sourceNode) ? sourceNode : null;
             const aitudouNode = nativeRetryNode && (nativeRetryNode.metadata?.providerTask?.provider === "aitudou" || nativeRetryNode.metadata?.aitudouOperation) ? nativeRetryNode : null;
@@ -3413,7 +3419,7 @@ function TDCanvasProjectPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, handleResumeAitudou, handleRunAitudou, isAiConfigReady, message, openConfigDialog, startGenerationRequest, t],
+        [buildNodeToolbarItems, effectiveConfig, finishGenerationRequest, handleResumeAitudou, handleRunAitudou, isAiConfigReady, message, openConfigDialog, startGenerationRequest, t],
     );
 
     const generateImageFromTextNode = useCallback(

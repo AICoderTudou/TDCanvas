@@ -109,8 +109,12 @@ export function mergeComfyCanvasNodeSnapshot(definition: ComfyWorkflowDefinition
 
 export function comfyCanvasPorts(snapshot: ComfyCanvasNodeSnapshot | null): CanvasNodePort[] {
     if (!snapshot) return [];
+    const inputTypeOrder: CanvasPortDataType[] = ["image", "video", "audio", "text", "number", "boolean", "json", "any"];
+    const visibleInputs = snapshot.inputs
+        .filter((input) => input.canvasPort && snapshot.inputEnabled?.[input.id] !== false)
+        .sort((left, right) => inputTypeOrder.indexOf(inputPortType(left)) - inputTypeOrder.indexOf(inputPortType(right)) || left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: "base" }));
     return [
-        ...snapshot.inputs.filter((input) => input.canvasPort).map((input) => ({ id: input.id, label: input.label, direction: "input" as const, dataType: inputPortType(input), required: input.required, multiple: false })),
+        ...visibleInputs.map((input) => ({ id: input.id, label: input.label, direction: "input" as const, dataType: inputPortType(input), required: input.required, multiple: false })),
         // Every selected workflow output owns a managed result node, so it must
         // remain addressable even when the user did not expose it for ad-hoc wiring.
         ...snapshot.outputs.map((output) => ({ id: output.id, label: output.label, direction: "output" as const, dataType: outputPortType(output.resourceType), multiple: true })),
