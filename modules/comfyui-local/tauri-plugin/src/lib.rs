@@ -1119,12 +1119,11 @@ async fn cache_comfy_output<R: Runtime>(
             .allow_directory(&directory, true)
             .map_err(|error| format!("无法授权 ComfyUI 视频预览目录：{error}"))?;
     }
-    let direct_target = directory.join(&safe_filename);
     let source = (request.resource_type == "video")
         .then(|| comfy_result_source_path(comfy_root, file_type, subfolder, &safe_filename))
         .flatten();
-    let target = if source.as_ref() == Some(&direct_target) {
-        direct_target
+    let target = if request.resource_type == "video" {
+        run_result_path(&directory, &safe_filename, prompt_id, item_index)
     } else {
         unique_result_path(&directory, &safe_filename, item_index)
     };
@@ -1271,6 +1270,25 @@ fn unique_result_path(directory: &Path, filename: &str, item_index: usize) -> Pa
         .map(|value| format!(".{value}"))
         .unwrap_or_default();
     directory.join(format!("{stem}-{}-{item_index}{extension}", now_millis()))
+}
+
+fn run_result_path(directory: &Path, filename: &str, prompt_id: &str, item_index: usize) -> PathBuf {
+    let source = Path::new(filename);
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("result");
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let filename = format!(
+        "{stem}-{}-{}{extension}",
+        sanitize_path_segment(prompt_id, "prompt"),
+        item_index + 1
+    );
+    unique_result_path(directory, &filename, item_index)
 }
 
 fn mime_from_filename(filename: &str) -> Option<&'static str> {
@@ -2037,6 +2055,10 @@ mod tests {
             Some(PathBuf::from("ComfyUI").join("output").join("clips/final").join("clip.mp4"))
         );
         assert!(comfy_result_source_path(Path::new("ComfyUI"), "output", "../escape", "clip.mp4").is_none());
+        assert_eq!(
+            run_result_path(Path::new("ComfyUI/output/画布"), "clip.mp4", "prompt-2", 0),
+            PathBuf::from("ComfyUI/output/画布/clip-prompt-2-1.mp4")
+        );
     }
 
     #[test]

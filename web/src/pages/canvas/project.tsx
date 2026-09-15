@@ -71,6 +71,7 @@ import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buil
 import { readLastUsedNodeConfig, rememberLastUsedNodeConfig } from "@/lib/canvas/canvas-node-preferences";
 import { findContainingGroupId, findGroupDropTarget, isHiddenBatchChild, isHiddenBatchConnectionEndpoint, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
 import { resolveCanvasNodeDrag, type CanvasAlignmentGuides, type CanvasDragFrame } from "@/lib/canvas/canvas-alignment-guides";
+import { dragDuplicateNodeIds, duplicateCanvasNodes, duplicateIncomingConnections, duplicateNodeData, expandCanvasNodeIds, incomingConnectionIds } from "@/lib/canvas/canvas-node-duplication";
 import { canvasPortHandle, getConnectionHandleAnchor, getHandlePorts, normalizeConnectionHandles } from "@/lib/canvas/canvas-node-ports";
 import {
     audioExtension,
@@ -218,6 +219,7 @@ function TDCanvasProjectPage() {
         startY: number;
         initialSelectedNodes: CanvasDragFrame[];
         stationaryNodes: CanvasDragFrame[];
+        duplicateOnMove: boolean;
     }>({
         isDraggingNode: false,
         hasMoved: false,
@@ -225,6 +227,7 @@ function TDCanvasProjectPage() {
         startY: 0,
         initialSelectedNodes: [],
         stationaryNodes: [],
+        duplicateOnMove: false,
     });
 
     const config = useConfigStore((state) => state.config);
@@ -1023,25 +1026,18 @@ function TDCanvasProjectPage() {
     }, [cleanupCanvasFiles, deselectCanvas, projectId]);
 
     const duplicateNode = useCallback((nodeId: string) => {
-        const source = nodesRef.current.find((node) => node.id === nodeId);
-        if (!source) return;
-
-        const id = `${source.type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const next: CanvasNodeData = {
-            ...source,
-            id,
-            title: `${source.title} Copy`,
-            position: { x: source.position.x + 36, y: source.position.y + 36 },
-        };
-
-        setNodes((prev) => [...prev, next]);
-        setSelectedNodeIds(new Set([id]));
+        const duplicated = duplicateCanvasNodes(nodesRef.current, connectionsRef.current, expandCanvasNodeIds(nodesRef.current, new Set([nodeId])), { x: 36, y: 36 }, (node) => `${node.type}-${Date.now()}-${nanoid(5)}`, () => nanoid());
+        const next = duplicated.nodes[0];
+        if (!next) return;
+        setNodes((prev) => [...prev, ...duplicated.nodes]);
+        setConnections((prev) => [...prev, ...duplicated.connections]);
+        setSelectedNodeIds(new Set([next.id]));
         setSelectedConnectionId(null);
-        if (next.type !== CanvasNodeType.Group) setDialogNodeId(id);
+        if (next.type !== CanvasNodeType.Group) setDialogNodeId(next.id);
     }, []);
 
     const copySelectedNodes = useCallback(() => {
-        const selectedIds = selectedNodeIdsRef.current;
+        const selectedIds = expandCanvasNodeIds(nodesRef.current, selectedNodeIdsRef.current);
         if (!selectedIds.size) return;
 
         const copiedNodes = nodesRef.current
@@ -1056,7 +1052,7 @@ function TDCanvasProjectPage() {
 
         clipboardRef.current = {
             nodes: copiedNodes,
-            connections: connectionsRef.current.filter((connection) => selectedIds.has(connection.fromNodeId) && selectedIds.has(connection.toNodeId)).map((connection) => ({ ...connection })),
+            connections: connectionsRef.current.filter((connection) => selectedIds.has(connection.toNodeId)).map((connection) => ({ ...connection })),
         };
     }, []);
 
@@ -1088,41 +1084,11 @@ function TDCanvasProjectPage() {
         );
         const dx = center.x - (bounds.left + bounds.right) / 2;
         const dy = center.y - (bounds.top + bounds.bottom) / 2;
-        const idMap = new Map<string, string>();
-        const nextNodes = clipboard.nodes.map((node, index) => {
-            const id = `${node.type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
-            idMap.set(node.id, id);
-            return {
-                ...node,
-                id,
-                title: node.title.endsWith(" Copy") ? node.title : `${node.title} Copy`,
-                position: {
-                    x: node.position.x + dx,
-                    y: node.position.y + dy,
-                },
-                metadata: node.metadata ? { ...node.metadata } : undefined,
-            };
-        });
+        const duplicated = duplicateNodeData(clipboard.nodes, { x: dx, y: dy }, (node, index) => `${node.type}-${Date.now()}-${index}-${nanoid(5)}`);
+        const { idMap } = duplicated;
+        const pastedNodes = duplicated.nodes;
 
-        const pastedNodes = nextNodes.map((node) => {
-            const groupId = node.metadata?.groupId;
-            if (!groupId) return node;
-            return { ...node, metadata: { ...node.metadata, groupId: idMap.get(groupId) } };
-        });
-
-        const nextConnections = clipboard.connections.flatMap((connection, index) => {
-            const fromNodeId = idMap.get(connection.fromNodeId);
-            const toNodeId = idMap.get(connection.toNodeId);
-            if (!fromNodeId || !toNodeId) return [];
-            return [
-                {
-                    ...connection,
-                    id: `conn-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-                    fromNodeId,
-                    toNodeId,
-                },
-            ];
-        });
+        const nextConnections = duplicateIncomingConnections(clipboard.connections, idMap, new Set(nodesRef.current.map((node) => node.id)), (_connection, index) => `conn-${Date.now()}-${index}-${nanoid(5)}`);
 
         setNodes((prev) => [...prev, ...pastedNodes]);
         setConnections((prev) => [...prev, ...nextConnections]);
@@ -1132,6 +1098,13 @@ function TDCanvasProjectPage() {
         setDialogNodeId(pastedNodes[0]?.type === CanvasNodeType.Group ? null : pastedNodes[0]?.id || null);
         return true;
     }, [getCanvasCenter]);
+
+    const clearNodeInputs = useCallback((nodeId: string) => {
+        const ids = new Set(incomingConnectionIds(connectionsRef.current, nodeId));
+        if (!ids.size) return;
+        setConnections((prev) => prev.filter((connection) => !ids.has(connection.id)));
+        setSelectedConnectionId((current) => (current && ids.has(current) ? null : current));
+    }, []);
 
     const resetViewport = useCallback(() => {
         const visible = nodesRef.current.filter((node) => !isHiddenBatchChild(node, nodesRef.current));
@@ -1340,16 +1313,7 @@ function TDCanvasProjectPage() {
         const currentNodes = nodesRef.current;
         const nextSelected = pendingSelectionRef.current ?? selectNodeByEvent(event, nodeId).nextSelected;
         pendingSelectionRef.current = null;
-        const dragIds = new Set(nextSelected);
-        currentNodes.forEach((node) => {
-            if (!nextSelected.has(node.id)) return;
-            node.metadata?.batchChildIds?.forEach((childId) => dragIds.add(childId));
-            if (node.type === CanvasNodeType.Group) {
-                currentNodes.forEach((child) => {
-                    if (child.metadata?.groupId === node.id) dragIds.add(child.id);
-                });
-            }
-        });
+        const dragIds = expandCanvasNodeIds(currentNodes, dragDuplicateNodeIds(nodeId, nextSelected, event.altKey));
         dragRef.current = {
             isDraggingNode: true,
             hasMoved: false,
@@ -1357,6 +1321,7 @@ function TDCanvasProjectPage() {
             startY: event.clientY,
             initialSelectedNodes: currentNodes.filter((node) => dragIds.has(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y, width: node.width, height: node.height })),
             stationaryNodes: currentNodes.filter((node) => !dragIds.has(node.id) && !isHiddenBatchChild(node, currentNodes)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y, width: node.width, height: node.height })),
+            duplicateOnMove: event.altKey,
         };
         setAlignmentGuides({ vertical: [], horizontal: [] });
         historyPausedRef.current = true;
@@ -1415,6 +1380,7 @@ function TDCanvasProjectPage() {
             dragRef.current.hasMoved = false;
             dragRef.current.initialSelectedNodes = [];
             dragRef.current.stationaryNodes = [];
+            dragRef.current.duplicateOnMove = false;
             if (wasClick && clickedNodeId) {
                 const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
                 const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
@@ -1436,6 +1402,25 @@ function TDCanvasProjectPage() {
             const currentViewport = viewportRef.current;
 
             if (dragRef.current.isDraggingNode) {
+                const movedPastThreshold = Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3;
+                if (movedPastThreshold && dragRef.current.duplicateOnMove) {
+                    const duplicated = duplicateCanvasNodes(
+                        nodesRef.current,
+                        connectionsRef.current,
+                        new Set(dragRef.current.initialSelectedNodes.map((node) => node.id)),
+                        { x: 0, y: 0 },
+                        (node) => `${node.type}-${Date.now()}-${nanoid(5)}`,
+                        () => nanoid(),
+                    );
+                    if (duplicated.nodes.length) {
+                        setNodes((prev) => [...prev, ...duplicated.nodes]);
+                        setConnections((prev) => [...prev, ...duplicated.connections]);
+                        setSelectedNodeIds(new Set(duplicated.nodes.map((node) => node.id)));
+                        dragRef.current.initialSelectedNodes = duplicated.nodes.map((node) => ({ id: node.id, x: node.position.x, y: node.position.y, width: node.width, height: node.height }));
+                        dragRef.current.stationaryNodes = nodesRef.current.filter((node) => !isHiddenBatchChild(node, nodesRef.current)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y, width: node.width, height: node.height }));
+                    }
+                    dragRef.current.duplicateOnMove = false;
+                }
                 const initialPositions = dragRef.current.initialSelectedNodes;
                 const rawDx = (event.clientX - dragRef.current.startX) / currentViewport.k;
                 const rawDy = (event.clientY - dragRef.current.startY) / currentViewport.k;
@@ -1448,7 +1433,7 @@ function TDCanvasProjectPage() {
                     snapToGrid,
                     gridStep: CANVAS_GRID_STEP,
                 });
-                if (Math.abs(event.clientX - dragRef.current.startX) > 3 || Math.abs(event.clientY - dragRef.current.startY) > 3) {
+                if (movedPastThreshold) {
                     dragRef.current.hasMoved = true;
                 }
 
@@ -3918,6 +3903,12 @@ function TDCanvasProjectPage() {
                         onDuplicate={() => {
                             if (contextMenu.type !== "node") return;
                             duplicateNode(contextMenu.nodeId);
+                            setContextMenu(null);
+                        }}
+                        canClearInputs={contextMenu.type === "node" && connections.some((connection) => connection.toNodeId === contextMenu.nodeId)}
+                        onClearInputs={() => {
+                            if (contextMenu.type !== "node") return;
+                            clearNodeInputs(contextMenu.nodeId);
                             setContextMenu(null);
                         }}
                         onDelete={() => {

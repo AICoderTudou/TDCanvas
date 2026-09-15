@@ -845,7 +845,7 @@ export default {
             imagePreview: "Referenced image preview",
             resources: { image: "Image {{index}}", video: "Video {{index}}", audio: "Audio {{index}}", text: "Text {{index}}" },
         },
-        controls: { ratio: "Ratio", duplicate: "Duplicate", delete: "Delete", images: "{{count}} images", reasoning: "Reasoning" },
+        controls: { ratio: "Ratio", duplicate: "Duplicate", clearInputs: "Clear inputs", delete: "Delete", images: "{{count}} images", reasoning: "Reasoning" },
         generation: {
             interrupted: "Generation was interrupted by a page refresh. Generate again.",
             front: "front view",

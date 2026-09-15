@@ -838,7 +838,7 @@ export default {
             imagePreview: "引用图片预览",
             resources: { image: "图片{{index}}", video: "视频{{index}}", audio: "音频{{index}}", text: "文本{{index}}" },
         },
-        controls: { ratio: "比例", duplicate: "复制", delete: "删除", images: "{{count}} 张", reasoning: "推理" },
+        controls: { ratio: "比例", duplicate: "复制", clearInputs: "清理输入", delete: "删除", images: "{{count}} 张", reasoning: "推理" },
         generation: {
             interrupted: "页面刷新后生成已中断，请重新生成。",
             front: "正面视角",

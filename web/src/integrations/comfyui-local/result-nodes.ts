@@ -51,7 +51,7 @@ export function ensureComfyResultNodeOps(source: CanvasNodeData, definition: Com
     const ops: CanvasAgentOp[] = [];
     const { promptId, itemIndexes = {} } = options;
     definition.outputs.forEach((output, outputIndex) => {
-        const indexes = itemIndexes[output.id]?.length ? itemIndexes[output.id]! : [0];
+        const indexes = itemIndexes[output.id]?.length ? [...new Set(itemIndexes[output.id])].sort((left, right) => left - right) : [0];
         indexes.forEach((itemIndex) => {
             let result = nodes.find((node) => {
                 const binding = readComfyResultBinding(node);
