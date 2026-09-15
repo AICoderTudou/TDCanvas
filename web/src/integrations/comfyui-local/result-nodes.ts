@@ -14,6 +14,11 @@ export type ComfyResultBinding = {
     itemIndex: number;
 };
 
+export type ComfyResultNodeOptions = {
+    promptId?: string;
+    itemIndexes?: Record<string, number[]>;
+};
+
 export function createComfyResultNodes(source: CanvasNodeData, definition: ComfyWorkflowDefinition) {
     const nodes = definition.outputs.map((output, index) => createComfyResultNode(source, definition, output, index, 0));
     const connections = nodes.map(
@@ -27,7 +32,7 @@ export function createComfyResultNodes(source: CanvasNodeData, definition: Comfy
     return { nodes, connections };
 }
 
-export function createComfyResultNode(source: CanvasNodeData, definition: ComfyWorkflowDefinition, output: ComfyExposedOutput, outputIndex: number, itemIndex: number) {
+export function createComfyResultNode(source: CanvasNodeData, definition: ComfyWorkflowDefinition, output: ComfyExposedOutput, outputIndex: number, itemIndex: number, promptId?: string) {
     const type = comfyResultNodeType(output.resourceType);
     const center = resultNodeCenter(source, type, outputIndex, itemIndex);
     const binding: ComfyResultBinding = { sourceNodeId: source.id, workflowId: definition.id, outputId: output.id, resourceType: output.resourceType, itemIndex };
@@ -37,21 +42,35 @@ export function createComfyResultNode(source: CanvasNodeData, definition: ComfyW
         sourceOrigin: "generated",
         generationMode: output.resourceType === "image" || output.resourceType === "video" || output.resourceType === "audio" || output.resourceType === "text" ? output.resourceType : "text",
         comfyuiResult: binding,
+        comfyuiPromptId: promptId,
     });
     return { ...node, title: resultNodeTitle(definition, output, itemIndex) };
 }
 
-export function ensureComfyResultNodeOps(source: CanvasNodeData, definition: ComfyWorkflowDefinition, nodes: CanvasNodeData[], connections: CanvasConnection[], itemIndexes: Record<string, number[]> = {}): CanvasAgentOp[] {
+export function ensureComfyResultNodeOps(source: CanvasNodeData, definition: ComfyWorkflowDefinition, nodes: CanvasNodeData[], connections: CanvasConnection[], options: ComfyResultNodeOptions = {}): CanvasAgentOp[] {
     const ops: CanvasAgentOp[] = [];
+    const { promptId, itemIndexes = {} } = options;
     definition.outputs.forEach((output, outputIndex) => {
         const indexes = itemIndexes[output.id]?.length ? itemIndexes[output.id]! : [0];
         indexes.forEach((itemIndex) => {
             let result = nodes.find((node) => {
                 const binding = readComfyResultBinding(node);
-                return binding?.sourceNodeId === source.id && binding.outputId === output.id && binding.itemIndex === itemIndex;
+                return binding?.sourceNodeId === source.id && binding.outputId === output.id && binding.itemIndex === itemIndex && (!promptId || node.metadata?.comfyuiPromptId === promptId);
             });
+            if (!result && promptId) {
+                result = nodes.find((node) => {
+                    const binding = readComfyResultBinding(node);
+                    return binding?.sourceNodeId === source.id && binding.outputId === output.id && binding.itemIndex === itemIndex && !node.metadata?.content && !node.metadata?.localPath && !node.metadata?.comfyuiPromptId;
+                });
+                if (result) {
+                    ops.push({ type: "update_node", id: result.id, metadata: { comfyuiPromptId: promptId } });
+                    result = { ...result, metadata: { ...result.metadata, comfyuiPromptId: promptId } };
+                    nodes = nodes.map((node) => (node.id === result!.id ? result! : node));
+                }
+            }
             if (!result) {
-                result = createComfyResultNode(source, definition, output, outputIndex, itemIndex);
+                result = createComfyResultNode(source, definition, output, outputIndex, itemIndex, promptId);
+                if (promptId) result = { ...result, position: appendedResultPosition(source, result, nodes) };
                 ops.push({ type: "add_node", id: result.id, nodeType: result.type, title: result.title, position: result.position, width: result.width, height: result.height, metadata: result.metadata });
                 nodes = [...nodes, result];
             }
@@ -99,4 +118,13 @@ function resultNodeCenter(source: CanvasNodeData, type: CanvasNodeType, outputIn
 function resultNodeTitle(definition: ComfyWorkflowDefinition, output: ComfyExposedOutput, itemIndex: number) {
     const suffix = itemIndex ? ` ${itemIndex + 1}` : "";
     return `${definition.name} · ${output.label}${suffix}`;
+}
+
+function appendedResultPosition(source: CanvasNodeData, result: CanvasNodeData, nodes: CanvasNodeData[]): Position {
+    const managed = nodes.filter((node) => readComfyResultBinding(node)?.sourceNodeId === source.id);
+    if (!managed.length) return result.position;
+    return {
+        x: source.position.x + source.width + 120,
+        y: Math.max(...managed.map((node) => node.position.y + node.height)) + 56,
+    };
 }

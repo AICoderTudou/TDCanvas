@@ -64,11 +64,13 @@ export function createComfyNativeClient(invoke: ComfyNativeInvoke) {
       profileId: string,
       promptId: string,
       outputs: ComfyRequestedOutput[],
+      outputFolder: string,
     ) =>
       invoke<ComfyExecutionResult>(command("wait_for_execution"), {
         profileId,
         promptId,
         outputs,
+        outputFolder,
       }),
     interruptExecution: (profileId: string, promptId: string) =>
       invoke<void>(command("interrupt_execution"), { profileId, promptId }),

@@ -43,9 +43,77 @@ describe("ComfyUI managed result nodes", () => {
 
         expect(ensureComfyResultNodeOps(source, definition, [...graph.nodes], [...graph.connections])).toEqual([]);
 
-        const ops = ensureComfyResultNodeOps(source, definition, [...graph.nodes], [...graph.connections], { "10:result": [0, 1] });
+        const ops = ensureComfyResultNodeOps(source, definition, [...graph.nodes], [...graph.connections], { itemIndexes: { "10:result": [0, 1] } });
         expect(ops.filter((op) => op.type === "add_node")).toHaveLength(1);
         expect(ops.filter((op) => op.type === "connect_nodes")).toHaveLength(1);
+    });
+
+    it("adds a result node and connection for a new workflow run", () => {
+        const videoDefinition = { ...definition, outputs: [definition.outputs[1]!] };
+        const source = createComfyWorkflowCanvasNode(videoDefinition, { x: 400, y: 300 });
+        const graph = createComfyResultNodes(source, videoDefinition);
+        const completed = {
+            ...graph.nodes[0]!,
+            metadata: { ...graph.nodes[0]!.metadata, status: "success" as const, content: "desktop://first.mp4", localPath: "C:\\cache\\first.mp4", comfyuiPromptId: "prompt-1" },
+        };
+
+        const ops = ensureComfyResultNodeOps(source, videoDefinition, [source, completed], graph.connections, {
+            promptId: "prompt-2",
+            itemIndexes: { "11:result": [0] },
+        });
+
+        expect(ops.filter((op) => op.type === "add_node")).toHaveLength(1);
+        expect(ops.filter((op) => op.type === "connect_nodes")).toHaveLength(1);
+    });
+
+    it("preserves a non-empty legacy result without a prompt id", () => {
+        const videoDefinition = { ...definition, outputs: [definition.outputs[1]!] };
+        const source = createComfyWorkflowCanvasNode(videoDefinition, { x: 400, y: 300 });
+        const graph = createComfyResultNodes(source, videoDefinition);
+        const legacy = { ...graph.nodes[0]!, metadata: { ...graph.nodes[0]!.metadata, status: "success" as const, content: "desktop://legacy.mp4", localPath: "C:\\cache\\legacy.mp4" } };
+
+        const ops = ensureComfyResultNodeOps(source, videoDefinition, [source, legacy], graph.connections, { promptId: "prompt-2" });
+
+        expect(ops.filter((op) => op.type === "add_node")).toHaveLength(1);
+        expect(ops.some((op) => op.type === "update_node" && op.id === legacy.id)).toBe(false);
+    });
+
+    it("creates a fresh result after a historical result was deleted", () => {
+        const videoDefinition = { ...definition, outputs: [definition.outputs[1]!] };
+        const source = createComfyWorkflowCanvasNode(videoDefinition, { x: 400, y: 300 });
+
+        const ops = ensureComfyResultNodeOps(source, videoDefinition, [source], [], { promptId: "prompt-2" });
+
+        expect(ops.filter((op) => op.type === "add_node")).toHaveLength(1);
+        expect(ops.filter((op) => op.type === "connect_nodes")).toHaveLength(1);
+    });
+
+    it("does not duplicate results while reconciling the same prompt id", () => {
+        const videoDefinition = { ...definition, outputs: [definition.outputs[1]!] };
+        const source = createComfyWorkflowCanvasNode(videoDefinition, { x: 400, y: 300 });
+        const graph = createComfyResultNodes(source, videoDefinition);
+        const claimed = { ...graph.nodes[0]!, metadata: { ...graph.nodes[0]!.metadata, comfyuiPromptId: "prompt-1" } };
+
+        expect(ensureComfyResultNodeOps(source, videoDefinition, [source, claimed], graph.connections, { promptId: "prompt-1" })).toEqual([]);
+    });
+
+    it("appends multiple outputs and batch items below existing results without overlap", () => {
+        const source = createComfyWorkflowCanvasNode(definition, { x: 400, y: 300 });
+        const graph = createComfyResultNodes(source, definition);
+        const completed = graph.nodes.map((node) => ({ ...node, metadata: { ...node.metadata, status: "success" as const, content: `desktop://${node.id}`, comfyuiPromptId: "prompt-1" } }));
+
+        const ops = ensureComfyResultNodeOps(source, definition, [source, ...completed], graph.connections, {
+            promptId: "prompt-2",
+            itemIndexes: { "10:result": [0, 1], "11:result": [0], "12:result": [0], "13:result": [0] },
+        });
+        const added = ops.filter((op) => op.type === "add_node").map((op) => ({ position: op.position!, height: op.height! }));
+        const previousBottom = Math.max(...completed.map((node) => node.position.y + node.height));
+
+        expect(added).toHaveLength(5);
+        expect(added[0]!.position.y).toBeGreaterThanOrEqual(previousBottom + 56);
+        for (let index = 1; index < added.length; index += 1) {
+            expect(added[index]!.position.y).toBeGreaterThanOrEqual(added[index - 1]!.position.y + added[index - 1]!.height + 56);
+        }
     });
 
     it("removes stale managed results before binding a different workflow", () => {

@@ -148,7 +148,7 @@ function inspectInputs(
   const orderedFields = orderedInputFields(node, info);
   return orderedFields.map((field): ComfyInspectedInput => {
     const currentValue = node.inputs[field];
-    const spec = specs.get(field);
+    const spec = resolveInputSpec(specs, field);
     const internalLink = isComfyApiLink(currentValue, nodeIds);
     const valueType = inferInputValueType(
       node.class_type,
@@ -182,6 +182,23 @@ function inspectInputs(
         : undefined,
     };
   });
+}
+
+function resolveInputSpec(specs: ReturnType<typeof inputSpecs>, field: string) {
+  const direct = specs.get(field);
+  if (direct) return direct;
+  const [groupField, nestedField] = field.split(".");
+  if (!groupField || !nestedField) return undefined;
+  const group = specs.get(groupField);
+  const templateInput = group?.spec?.[1]?.template;
+  if (!group || !templateInput || typeof templateInput !== "object") return undefined;
+  const input = (templateInput as { input?: { required?: Record<string, ComfyInputSpec>; optional?: Record<string, ComfyInputSpec> } }).input;
+  for (const section of ["required", "optional"] as const) {
+    for (const [name, spec] of Object.entries(input?.[section] || {})) {
+      if (nestedField === name || nestedField.startsWith(`${name}_`)) return { section: group.section, spec };
+    }
+  }
+  return { section: group.section, spec: group.spec };
 }
 
 function isRecommendedCanvasInput(
@@ -230,7 +247,7 @@ function inspectOutputs(
   }
 
   return outputTypes.map((comfyType, outputIndex) => {
-    const resourceType = mapOutputResourceType(comfyType);
+    const resourceType = mapOutputResourceType(comfyType, node.class_type);
     return {
       id: `${nodeId}:${outputIndex}`,
       nodeId,
@@ -327,8 +344,16 @@ function looksLikeMediaLoader(
   );
 }
 
-function mapOutputResourceType(comfyType: string): ComfyOutputResourceType {
+function mapOutputResourceType(
+  comfyType: string,
+  classType: string,
+): ComfyOutputResourceType {
   const value = comfyType.toUpperCase();
+  if (
+    value.includes("FILENAMES") &&
+    inferOutputNodeResource(classType) === "video"
+  )
+    return "video";
   if (value.includes("IMAGE")) return "image";
   if (value.includes("VIDEO") || value.includes("GIF")) return "video";
   if (value.includes("AUDIO")) return "audio";

@@ -195,6 +195,8 @@ export type ComfyExposedInput = {
   defaultValue: unknown;
   required: boolean;
   canvasPort: boolean;
+  bypassWhenDisconnected?: boolean;
+  bypassNodeIds?: string[];
   constraints?: Record<string, unknown>;
   enumValues?: string[];
 };

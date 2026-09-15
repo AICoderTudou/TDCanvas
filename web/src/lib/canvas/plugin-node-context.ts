@@ -8,6 +8,7 @@ import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin"
 export function buildNodeContext(host: CanvasPluginHost, node: CanvasNodeData, theme: CanvasTheme, scale: number, isSelected = false): CanvasNodeContext {
     const storage = createPluginStorage(getNodePluginId(node.type));
     return {
+        canvasTitle: host.canvasTitle,
         node,
         theme,
         scale,

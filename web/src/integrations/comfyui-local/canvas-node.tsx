@@ -8,7 +8,8 @@ import i18n from "@/i18n";
 import type { ComfyExposedInput, ComfyWorkflowDefinition } from "./index";
 import { isComfyWorkflowRunning, runComfyWorkflowNode, stopComfyWorkflowNode } from "./execution";
 import { ensureComfyResultNodeOps, replaceComfyResultNodeOps } from "./result-nodes";
-import { listComfyWorkflowDefinitions } from "./workflow-library";
+import { ComfyWorkflowExposureEditor } from "./workflow-import-wizard";
+import { getComfyWorkflowDefinition, listComfyWorkflowDefinitions } from "./workflow-library";
 import { createCanvasNode } from "@/lib/canvas/canvas-node-factory";
 import { CanvasObjectReferencePicker } from "@/components/canvas/canvas-object-reference-picker";
 import type { CanvasResourceKind } from "@/lib/canvas/canvas-resource-references";
@@ -28,6 +29,7 @@ export type ComfyCanvasNodeSnapshot = {
     inputs: ComfyWorkflowDefinition["inputs"];
     outputs: ComfyWorkflowDefinition["outputs"];
     values: Record<string, unknown>;
+    inputEnabled?: Record<string, boolean>;
 };
 
 let registered = false;
@@ -95,10 +97,24 @@ export function createComfyCanvasNodeSnapshot(definition: ComfyWorkflowDefinitio
     };
 }
 
+export function mergeComfyCanvasNodeSnapshot(definition: ComfyWorkflowDefinition, previous?: ComfyCanvasNodeSnapshot | null): ComfyCanvasNodeSnapshot {
+    const next = createComfyCanvasNodeSnapshot(definition);
+    if (!previous || previous.workflowId !== definition.id) return next;
+    return {
+        ...next,
+        values: Object.fromEntries(definition.inputs.map((input) => [input.id, Object.hasOwn(previous.values, input.id) ? previous.values[input.id] : input.defaultValue])),
+        inputEnabled: Object.fromEntries(definition.inputs.filter((input) => previous.inputEnabled?.[input.id] === false).map((input) => [input.id, false])),
+    };
+}
+
 export function comfyCanvasPorts(snapshot: ComfyCanvasNodeSnapshot | null): CanvasNodePort[] {
     if (!snapshot) return [];
+    const inputTypeOrder: CanvasPortDataType[] = ["image", "video", "audio", "text", "number", "boolean", "json", "any"];
+    const visibleInputs = snapshot.inputs
+        .filter((input) => input.canvasPort && snapshot.inputEnabled?.[input.id] !== false)
+        .sort((left, right) => inputTypeOrder.indexOf(inputPortType(left)) - inputTypeOrder.indexOf(inputPortType(right)) || left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: "base" }));
     return [
-        ...snapshot.inputs.filter((input) => input.canvasPort).map((input) => ({ id: input.id, label: input.label, direction: "input" as const, dataType: inputPortType(input), required: input.required, multiple: false })),
+        ...visibleInputs.map((input) => ({ id: input.id, label: input.label, direction: "input" as const, dataType: inputPortType(input), required: input.required, multiple: false })),
         // Every selected workflow output owns a managed result node, so it must
         // remain addressable even when the user did not expose it for ad-hoc wiring.
         ...snapshot.outputs.map((output) => ({ id: output.id, label: output.label, direction: "output" as const, dataType: outputPortType(output.resourceType), multiple: true })),
@@ -182,21 +198,32 @@ function ComfyWorkflowNodePanel({ ctx, onClose }: { ctx: CanvasNodeContext; onCl
     const { t } = useTranslation();
     const snapshot = readComfySnapshot(ctx.node.metadata);
     const [selectingWorkflow, setSelectingWorkflow] = useState(!snapshot);
+    const [editingDefinition, setEditingDefinition] = useState<ComfyWorkflowDefinition | null>(null);
     useEffect(() => setSelectingWorkflow(!snapshot), [snapshot]);
 
-    const useWorkflow = (definition: ComfyWorkflowDefinition) => {
-        const next = createComfyCanvasNodeSnapshot(definition);
+    const useWorkflow = (definition: ComfyWorkflowDefinition, reconcilePorts = false) => {
+        const next = mergeComfyCanvasNodeSnapshot(definition, snapshot);
+        const nextPortIds = new Set([...next.inputs, ...next.outputs].map((item) => item.id));
+        const staleConnectionIds = reconcilePorts
+            ? ctx.getConnections().filter((connection) => (connection.fromNodeId === ctx.node.id && connection.fromPortId && !nextPortIds.has(connection.fromPortId)) || (connection.toNodeId === ctx.node.id && connection.toPortId && !nextPortIds.has(connection.toPortId))).map((connection) => connection.id)
+            : [];
         const metadata: CanvasNodeMetadata = {
             comfyuiLocal: next,
             comfyuiRun: undefined,
+            ...(reconcilePorts ? { objectReferences: (ctx.node.metadata?.objectReferences || []).filter((reference) => Boolean(reference.targetInputId && nextPortIds.has(reference.targetInputId))) } : {}),
             status: definition.dependencySnapshot.runnable ? "idle" : "error",
             errorDetails: definition.dependencySnapshot.runnable ? undefined : t("comfyuiLocal.canvasNode.dependencyError"),
         };
         const source = { ...ctx.node, title: definition.name, metadata: { ...ctx.node.metadata, ...metadata } };
         const nodes = ctx.getNodes().map((node) => (node.id === source.id ? source : node));
-        const resultOps = snapshot?.workflowId && snapshot.workflowId !== definition.id ? replaceComfyResultNodeOps(source, definition, nodes, ctx.getConnections()) : ensureComfyResultNodeOps(source, definition, nodes, ctx.getConnections());
-        ctx.applyOps([{ type: "update_node", id: source.id, patch: { title: definition.name }, metadata }, ...resultOps]);
+        const resultOps = reconcilePorts || (snapshot?.workflowId && snapshot.workflowId !== definition.id) ? replaceComfyResultNodeOps(source, definition, nodes, ctx.getConnections()) : ensureComfyResultNodeOps(source, definition, nodes, ctx.getConnections());
+        ctx.applyOps([...(staleConnectionIds.length ? [{ type: "delete_connections" as const, ids: staleConnectionIds }] : []), { type: "update_node", id: source.id, patch: { title: definition.name }, metadata }, ...resultOps]);
         setSelectingWorkflow(false);
+    };
+
+    const editExposure = async () => {
+        const definition = snapshot ? await getComfyWorkflowDefinition(snapshot.workflowId) : null;
+        if (definition) setEditingDefinition(definition);
     };
 
     return (
@@ -209,8 +236,9 @@ function ComfyWorkflowNodePanel({ ctx, onClose }: { ctx: CanvasNodeContext; onCl
             {selectingWorkflow || !snapshot ? (
                 <ComfyWorkflowPicker currentWorkflowId={snapshot?.workflowId} onSelect={useWorkflow} onClose={snapshot ? () => setSelectingWorkflow(false) : onClose} />
             ) : (
-                <ComfyWorkflowParameters ctx={ctx} snapshot={snapshot} onChangeWorkflow={() => setSelectingWorkflow(true)} onClose={onClose} />
+                <ComfyWorkflowParameters ctx={ctx} snapshot={snapshot} onEditExposure={() => void editExposure()} onChangeWorkflow={() => setSelectingWorkflow(true)} onClose={onClose} />
             )}
+            {editingDefinition ? <ComfyWorkflowExposureEditor open definition={editingDefinition} onClose={() => setEditingDefinition(null)} onSaved={(definition) => { useWorkflow(definition, true); setEditingDefinition(null); }} /> : null}
         </div>
     );
 }
@@ -296,9 +324,15 @@ function ComfyWorkflowPicker({ currentWorkflowId, onSelect, onClose }: { current
     );
 }
 
-function ComfyWorkflowParameters({ ctx, snapshot, onChangeWorkflow, onClose }: { ctx: CanvasNodeContext; snapshot: ComfyCanvasNodeSnapshot; onChangeWorkflow: () => void; onClose: () => void }) {
+function ComfyWorkflowParameters({ ctx, snapshot, onEditExposure, onChangeWorkflow, onClose }: { ctx: CanvasNodeContext; snapshot: ComfyCanvasNodeSnapshot; onEditExposure: () => void; onChangeWorkflow: () => void; onClose: () => void }) {
     const { t } = useTranslation();
     const updateValue = (id: string, value: unknown) => ctx.updateMetadata({ comfyuiLocal: { ...snapshot, values: { ...snapshot.values, [id]: value } } });
+    const updateInputEnabled = (input: ComfyExposedInput, enabled: boolean) => {
+        const sameNodeInputs = snapshot.inputs.filter((candidate) => candidate.nodeId === input.nodeId && candidate.control === "media");
+        const inputEnabled = { ...snapshot.inputEnabled };
+        for (const candidate of sameNodeInputs) inputEnabled[candidate.id] = enabled;
+        ctx.updateMetadata({ comfyuiLocal: { ...snapshot, inputEnabled } });
+    };
     const updateObjectReference = (inputId: string, sourceNodeId: string) => {
         const connectedIds = ctx.getInputConnections(inputId).map((connection) => connection.id);
         if (connectedIds.length) ctx.applyOps([{ type: "delete_connections", ids: connectedIds }]);
@@ -316,6 +350,9 @@ function ComfyWorkflowParameters({ ctx, snapshot, onChangeWorkflow, onClose }: {
                     <div className="mt-1 text-[11px] opacity-50">{t("comfyuiLocal.canvasNode.connectedOverride")}</div>
                 </div>
                 <div className="flex gap-2">
+                    <Button size="small" onClick={onEditExposure}>
+                        {t("comfyuiLocal.canvasNode.editExposure")}
+                    </Button>
                     <Button size="small" onClick={onChangeWorkflow}>
                         {t("comfyuiLocal.canvasNode.changeWorkflow")}
                     </Button>
@@ -333,6 +370,8 @@ function ComfyWorkflowParameters({ ctx, snapshot, onChangeWorkflow, onClose }: {
                             input={input}
                             value={snapshot.values[input.id]}
                             onChange={(value) => updateValue(input.id, value)}
+                            enabled={snapshot.inputEnabled?.[input.id] !== false}
+                            onEnabledChange={(enabled) => updateInputEnabled(input, enabled)}
                             referencePicker={
                                 input.canvasPort && allowedKinds.length ? (
                                     <CanvasObjectReferencePicker
@@ -355,7 +394,7 @@ function ComfyWorkflowParameters({ ctx, snapshot, onChangeWorkflow, onClose }: {
     );
 }
 
-function ParameterControl({ input, value, onChange, referencePicker }: { input: ComfyExposedInput; value: unknown; onChange: (value: unknown) => void; referencePicker?: ReactNode }) {
+function ParameterControl({ input, value, onChange, enabled = true, onEnabledChange, referencePicker }: { input: ComfyExposedInput; value: unknown; onChange: (value: unknown) => void; enabled?: boolean; onEnabledChange?: (enabled: boolean) => void; referencePicker?: ReactNode }) {
     const { t } = useTranslation();
     const label = (
         <div className="mb-2 flex min-w-0 items-center gap-2 text-[11px] font-medium opacity-65" title={input.label}>
@@ -366,14 +405,24 @@ function ParameterControl({ input, value, onChange, referencePicker }: { input: 
                     {t("comfyuiLocal.canvasNode.port")}
                 </span>
             ) : null}
-            <span className="ml-auto">{referencePicker}</span>
+            <span className="ml-auto flex items-center gap-2">
+                {input.control === "media" && onEnabledChange ? (
+                    <label className="inline-flex items-center gap-1.5 text-[10px] opacity-80">
+                        <span>{t(enabled ? "comfyuiLocal.canvasNode.inputUse" : "comfyuiLocal.canvasNode.inputBypass")}</span>
+                        <Switch size="small" checked={enabled} onChange={onEnabledChange} />
+                    </label>
+                ) : null}
+                {referencePicker}
+            </span>
         </div>
     );
     if (input.control === "media")
         return (
             <div className="block">
                 {label}
-                <div className="flex h-10 items-center rounded-lg border border-dashed border-white/[0.12] px-3 text-[11px] opacity-50">{t("comfyuiLocal.canvasNode.connectMedia", { type: input.valueType })}</div>
+                <div className={`flex h-10 items-center rounded-lg border border-dashed border-white/[0.12] px-3 text-[11px] ${enabled ? "opacity-50" : "opacity-30"}`}>
+                    {t(enabled ? "comfyuiLocal.canvasNode.connectMedia" : "comfyuiLocal.canvasNode.inputBypassHint", { type: input.valueType })}
+                </div>
             </div>
         );
     if (input.control === "switch")

@@ -56,24 +56,36 @@ describe("ComfyUI canvas execution", () => {
         });
     });
 
-    it("creates, connects and fills a native result node, then reuses it on rerun", async () => {
-        const source = createComfyWorkflowCanvasNode(definition, { x: 400, y: 300 });
+    it("keeps three independent video results after three sequential runs", async () => {
+        const videoDefinition: ComfyWorkflowDefinition = {
+            ...definition,
+            outputs: [{ id: "9:result", nodeId: "9", resultField: "videos", label: "视频", resourceType: "video", canvasPort: true, preview: true }],
+        };
+        mocks.definition = videoDefinition;
+        mocks.queueWorkflow.mockReset().mockResolvedValueOnce({ promptId: "prompt-1" }).mockResolvedValueOnce({ promptId: "prompt-2" }).mockResolvedValueOnce({ promptId: "prompt-3" });
+        mocks.waitForExecution
+            .mockReset()
+            .mockResolvedValueOnce({ promptId: "prompt-1", completedAt: 1001, outputs: [{ outputId: "9:result", nodeId: "9", itemIndex: 0, resourceType: "video", label: "视频", absolutePath: "C:\\cache\\first.mp4", filename: "first.mp4", mimeType: "video/mp4", bytes: 101 }] })
+            .mockResolvedValueOnce({ promptId: "prompt-2", completedAt: 1002, outputs: [{ outputId: "9:result", nodeId: "9", itemIndex: 0, resourceType: "video", label: "视频", absolutePath: "C:\\cache\\second.mp4", filename: "second.mp4", mimeType: "video/mp4", bytes: 102 }] })
+            .mockResolvedValueOnce({ promptId: "prompt-3", completedAt: 1003, outputs: [{ outputId: "9:result", nodeId: "9", itemIndex: 0, resourceType: "video", label: "视频", absolutePath: "C:\\cache\\third.mp4", filename: "third.mp4", mimeType: "video/mp4", bytes: 103 }] });
+        const source = createComfyWorkflowCanvasNode(videoDefinition, { x: 400, y: 300 });
         const nodes: CanvasNodeData[] = [source];
         const connections: CanvasConnection[] = [];
         const ctx = createContext(source, nodes, connections);
 
         await runComfyWorkflowNode(ctx);
+        const first = nodes.find((node) => readComfyResultBinding(node)?.sourceNodeId === source.id)!;
+        const firstMetadata = structuredClone(first.metadata);
+        await runComfyWorkflowNode(ctx);
+        await runComfyWorkflowNode(ctx);
 
         const results = nodes.filter((node) => readComfyResultBinding(node)?.sourceNodeId === source.id);
-        expect(results).toHaveLength(1);
-        expect(results[0]?.metadata).toMatchObject({ status: "success", content: "desktop://C:\\cache\\result.png", localPath: "C:\\cache\\result.png" });
-        expect(connections).toHaveLength(1);
-        expect(nodes.find((node) => node.id === source.id)?.metadata).toMatchObject({ status: "success", comfyuiRun: { phase: "succeeded", promptId: "prompt-1" } });
-
-        await runComfyWorkflowNode(ctx);
-        expect(nodes.filter((node) => readComfyResultBinding(node)?.sourceNodeId === source.id)).toHaveLength(1);
-        expect(connections).toHaveLength(1);
-        expect(mocks.queueWorkflow).toHaveBeenCalledTimes(2);
+        expect(results).toHaveLength(3);
+        expect(connections).toHaveLength(3);
+        expect(results.map((node) => node.metadata?.localPath)).toEqual(["C:\\cache\\first.mp4", "C:\\cache\\second.mp4", "C:\\cache\\third.mp4"]);
+        expect(results.map((node) => node.metadata?.comfyuiPromptId)).toEqual(["prompt-1", "prompt-2", "prompt-3"]);
+        expect(nodes.find((node) => node.id === first.id)?.metadata).toEqual(firstMetadata);
+        expect(nodes.find((node) => node.id === source.id)?.metadata).toMatchObject({ status: "success", comfyuiRun: { phase: "succeeded", promptId: "prompt-3" } });
     });
 
     it("gets a generated result from the current canvas without a connection", async () => {
@@ -128,7 +140,7 @@ describe("ComfyUI canvas execution", () => {
         expect(connections[0]).toMatchObject({ fromNodeId: source.id, toNodeId: expect.any(String) });
         expect(mocks.resolveDownloadBlob).toHaveBeenCalledWith(expect.objectContaining({ kind: "image", url: "blob:global-generated-image" }));
         expect(mocks.uploadInput).toHaveBeenCalledWith(workflowWithImageInput.environmentId, "角色参考图.png", "image/png", [1, 2, 3]);
-        expect(mocks.materializeWorkflow).toHaveBeenCalledWith(workflowWithImageInput, expect.any(Object), { "4:image": "global-source.png" });
+        expect(mocks.materializeWorkflow).toHaveBeenCalledWith(workflowWithImageInput, expect.any(Object), { "4:image": "global-source.png" }, new Set());
     });
 });
 
@@ -146,6 +158,7 @@ function createContext(source: CanvasNodeData, nodes: CanvasNodeData[], connecti
         }
     };
     return {
+        canvasTitle: "测试画布",
         node: source,
         theme: {} as CanvasNodeContext["theme"],
         scale: 1,

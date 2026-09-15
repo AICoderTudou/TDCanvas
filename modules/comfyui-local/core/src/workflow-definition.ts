@@ -46,7 +46,7 @@ export function buildComfyWorkflowDefinition(
     apiWorkflow: cloneJson(draft.inspection.workflow),
     workflowHash: comfyWorkflowHash(draft.inspection.workflow),
     inputs: draft.inputs.map(({ source, label, canvasPort }) =>
-      exposedInput(source, label, canvasPort),
+      exposedInput(source, draft.inspection, label, canvasPort),
     ),
     outputs: draft.outputs.map(({ source, label, canvasPort, preview }) =>
       exposedOutput(source, label, canvasPort, preview),
@@ -89,9 +89,14 @@ export function comfyWorkflowHash(
 
 function exposedInput(
   input: ComfyInspectedInput,
+  inspection: ComfyWorkflowInspection,
   label?: string,
   canvasPort?: boolean,
 ): ComfyExposedInput {
+  const port =
+    canvasPort ?? ["image", "video", "audio"].includes(input.valueType);
+  const bypassNodeIds = port && ["image", "video", "audio"].includes(input.valueType) ? safeMediaBypassNodeIds(input, inspection) : [];
+  const bypassWhenDisconnected = bypassNodeIds.length > 0;
   const constraints = {
     ...(typeof input.options.min === "number"
       ? { min: input.options.min }
@@ -111,12 +116,43 @@ function exposedInput(
     valueType: input.valueType,
     control: comfyInputControl(input),
     defaultValue: cloneJson(input.currentValue),
-    required: input.section === "required",
-    canvasPort:
-      canvasPort ?? ["image", "video", "audio"].includes(input.valueType),
+    required: input.section === "required" && !bypassWhenDisconnected,
+    canvasPort: port,
+    ...(bypassWhenDisconnected ? { bypassWhenDisconnected: true } : {}),
+    ...(bypassNodeIds.length ? { bypassNodeIds } : {}),
     ...(Object.keys(constraints).length ? { constraints } : {}),
     ...(input.enumValues?.length ? { enumValues: [...input.enumValues] } : {}),
   };
+}
+
+function safeMediaBypassNodeIds(
+  input: ComfyInspectedInput,
+  inspection: ComfyWorkflowInspection,
+) {
+  const bypassed = new Set([input.nodeId]);
+  const pending = [input.nodeId];
+  let foundBoundary = false;
+  while (pending.length) {
+    const nodeId = pending.shift()!;
+    const consumers = inspection.inputs.filter((candidate) => candidate.internalLink && Array.isArray(candidate.currentValue) && String(candidate.currentValue[0]) === nodeId);
+    if (!consumers.length) return [];
+    for (const consumer of consumers) {
+      if (consumer.section === "optional") {
+        foundBoundary = true;
+        continue;
+      }
+      if (consumer.section !== "required") return [];
+      const node = inspection.nodes.find((candidate) => candidate.nodeId === consumer.nodeId);
+      if (!node || node.outputs.some((output) => output.outputNode)) return [];
+      const externalLinks = node.inputs.filter((candidate) => candidate.internalLink && Array.isArray(candidate.currentValue) && !bypassed.has(String(candidate.currentValue[0])));
+      if (externalLinks.length) return [];
+      if (!bypassed.has(node.nodeId)) {
+        bypassed.add(node.nodeId);
+        pending.push(node.nodeId);
+      }
+    }
+  }
+  return foundBoundary ? [...bypassed] : [];
 }
 
 function exposedOutput(
@@ -132,12 +168,18 @@ function exposedOutput(
     resultField: output.outputNode
       ? resourceResultField(output.resourceType)
       : undefined,
-    label: label?.trim() || output.outputName,
+    label: label?.trim() || comfyOutputLabel(output),
     resourceType: output.resourceType,
     canvasPort: canvasPort ?? true,
     preview:
       preview ?? ["image", "video", "audio"].includes(output.resourceType),
   };
+}
+
+export function comfyOutputLabel(output: Pick<ComfyInspectedOutput, "outputName" | "resourceType">) {
+  return output.resourceType === "video" && output.outputName.toLowerCase() === "filenames"
+    ? "视频"
+    : output.outputName;
 }
 
 function resourceResultField(resourceType: ComfyExposedOutput["resourceType"]) {

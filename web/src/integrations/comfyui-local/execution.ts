@@ -34,26 +34,27 @@ export async function runComfyWorkflowNode(ctx: CanvasNodeContext) {
         if (status.profileId !== snapshot.environmentId) throw new Error(i18n.t("comfyuiLocal.execution.environmentMismatch"));
 
         const source = ctx.getNode(ctx.node.id) || ctx.node;
-        ensureResultNodes(ctx, source, definition);
         markSourceAndResults(ctx, "loading", { phase: "preparing", startedAt });
 
-        const connectedValues = await collectConnectedValues(ctx, definition);
+        const disabledInputIds = new Set(definition.inputs.filter((input) => snapshot.inputEnabled?.[input.id] === false).map((input) => input.id));
+        const connectedValues = await collectConnectedValues(ctx, definition, disabledInputIds);
         if (active.canceled) return;
-        const workflow = materializeComfyWorkflow(definition, snapshot.values, connectedValues);
+        const workflow = materializeComfyWorkflow(definition, snapshot.values, connectedValues, disabledInputIds);
         const queued = await comfyNativeClient.queueWorkflow(snapshot.environmentId, workflow);
         active.promptId = queued.promptId;
-        markSourceAndResults(ctx, "loading", { phase: "running", promptId: queued.promptId, startedAt });
+        ensureResultNodes(ctx, source, definition, [], queued.promptId);
+        markSourceAndResults(ctx, "loading", { phase: "running", promptId: queued.promptId, startedAt }, queued.promptId);
 
-        const result = await comfyNativeClient.waitForExecution(snapshot.environmentId, queued.promptId, definition.outputs);
+        const result = await comfyNativeClient.waitForExecution(snapshot.environmentId, queued.promptId, definition.outputs, ctx.canvasTitle);
         if (active.canceled) return;
         applyExecutionResult(ctx, source, definition, result.outputs, result.promptId, result.completedAt);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (active.canceled) {
-            markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, startedAt, completedAt: Date.now() });
+            markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, startedAt, completedAt: Date.now() }, active.promptId);
         } else {
             setSourceError(ctx, message, { phase: "failed", promptId: active.promptId, startedAt, completedAt: Date.now() });
-            markResultNodes(ctx, "error", message);
+            markResultNodes(ctx, "error", message, active.promptId);
         }
     } finally {
         if (activeRuns.get(ctx.node.id) === active) activeRuns.delete(ctx.node.id);
@@ -66,12 +67,13 @@ export async function stopComfyWorkflowNode(ctx: CanvasNodeContext) {
     if (!active || !snapshot) return;
     active.canceled = true;
     if (active.promptId) await comfyNativeClient.interruptExecution(snapshot.environmentId, active.promptId).catch(() => undefined);
-    markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, completedAt: Date.now() });
+    markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, completedAt: Date.now() }, active.promptId);
 }
 
-async function collectConnectedValues(ctx: CanvasNodeContext, definition: ComfyWorkflowDefinition) {
+async function collectConnectedValues(ctx: CanvasNodeContext, definition: ComfyWorkflowDefinition, disabledInputIds: ReadonlySet<string>) {
     const values: Record<string, unknown> = {};
     for (const input of definition.inputs) {
+        if (disabledInputIds.has(input.id)) continue;
         const objectReference = ctx.node.metadata?.objectReferences?.find((reference) => reference.targetInputId === input.id);
         const connection = objectReference ? undefined : ctx.getInputConnections(input.id)[0];
         if (!objectReference && !connection) continue;
@@ -105,28 +107,28 @@ async function uploadConnectedMedia(environmentId: string, source: CanvasNodeDat
     return uploaded.subfolder ? `${uploaded.subfolder.replace(/\\/g, "/")}/${uploaded.name}` : uploaded.name;
 }
 
-function ensureResultNodes(ctx: CanvasNodeContext, source: CanvasNodeData, definition: ComfyWorkflowDefinition, outputs: ComfyExecutionOutput[] = []) {
+function ensureResultNodes(ctx: CanvasNodeContext, source: CanvasNodeData, definition: ComfyWorkflowDefinition, outputs: ComfyExecutionOutput[] = [], promptId?: string) {
     const indexes = outputs.reduce<Record<string, number[]>>((result, output) => {
         (result[output.outputId] ||= []).push(output.itemIndex);
         return result;
     }, {});
-    const ops = ensureComfyResultNodeOps(source, definition, ctx.getNodes(), ctx.getConnections(), indexes);
+    const ops = ensureComfyResultNodeOps(source, definition, ctx.getNodes(), ctx.getConnections(), { promptId, itemIndexes: indexes });
     if (ops.length) ctx.applyOps(ops);
 }
 
 function applyExecutionResult(ctx: CanvasNodeContext, source: CanvasNodeData, definition: ComfyWorkflowDefinition, outputs: ComfyExecutionOutput[], promptId: string, completedAt: number) {
     if (!outputs.length) throw new Error(i18n.t("comfyuiLocal.execution.noResults"));
-    ensureResultNodes(ctx, source, definition, outputs);
+    ensureResultNodes(ctx, source, definition, outputs, promptId);
     const operations: CanvasAgentOp[] = [];
     const completedKeys = new Set(outputs.map((output) => `${output.outputId}:${output.itemIndex}`));
     for (const output of outputs) {
-        const node = findResultNode(ctx.getNodes(), source.id, output.outputId, output.itemIndex);
+        const node = findResultNode(ctx.getNodes(), source.id, output.outputId, output.itemIndex, promptId);
         if (!node) continue;
         operations.push({ type: "update_node", id: node.id, metadata: resultMetadata(node, output, promptId, completedAt) });
     }
     for (const node of ctx.getNodes()) {
         const binding = readComfyResultBinding(node);
-        if (!binding || binding.sourceNodeId !== source.id || completedKeys.has(`${binding.outputId}:${binding.itemIndex}`)) continue;
+        if (!binding || binding.sourceNodeId !== source.id || node.metadata?.comfyuiPromptId !== promptId || completedKeys.has(`${binding.outputId}:${binding.itemIndex}`)) continue;
         operations.push({ type: "update_node", id: node.id, metadata: { status: "error", errorDetails: i18n.t("comfyuiLocal.execution.outputMissing") } });
     }
     operations.push({ type: "update_node", id: source.id, metadata: { status: "success", errorDetails: undefined, comfyuiRun: { phase: "succeeded", promptId, completedAt } } });
@@ -156,19 +158,19 @@ function resultMetadata(node: CanvasNodeData, output: ComfyExecutionOutput, prom
     return common;
 }
 
-function markSourceAndResults(ctx: CanvasNodeContext, status: "idle" | "loading", run: Record<string, unknown>) {
+function markSourceAndResults(ctx: CanvasNodeContext, status: "idle" | "loading", run: Record<string, unknown>, promptId?: string) {
     const operations: CanvasAgentOp[] = [{ type: "update_node", id: ctx.node.id, metadata: { status, errorDetails: undefined, comfyuiRun: run } }];
     for (const node of ctx.getNodes()) {
         const binding = readComfyResultBinding(node);
-        if (binding?.sourceNodeId === ctx.node.id) operations.push({ type: "update_node", id: node.id, metadata: { status, errorDetails: undefined } });
+        if (binding?.sourceNodeId === ctx.node.id && promptId && node.metadata?.comfyuiPromptId === promptId) operations.push({ type: "update_node", id: node.id, metadata: { status, errorDetails: undefined } });
     }
     ctx.applyOps(operations);
 }
 
-function markResultNodes(ctx: CanvasNodeContext, status: "error", errorDetails: string) {
+function markResultNodes(ctx: CanvasNodeContext, status: "error", errorDetails: string, promptId?: string) {
     const operations = ctx
         .getNodes()
-        .filter((node) => readComfyResultBinding(node)?.sourceNodeId === ctx.node.id)
+        .filter((node) => readComfyResultBinding(node)?.sourceNodeId === ctx.node.id && promptId && node.metadata?.comfyuiPromptId === promptId)
         .map((node): CanvasAgentOp => ({ type: "update_node", id: node.id, metadata: { status, errorDetails } }));
     if (operations.length) ctx.applyOps(operations);
 }
@@ -177,10 +179,10 @@ function setSourceError(ctx: CanvasNodeContext, errorDetails: string, run: Recor
     ctx.applyOps([{ type: "update_node", id: ctx.node.id, metadata: { status: "error", errorDetails, comfyuiRun: run } }]);
 }
 
-function findResultNode(nodes: CanvasNodeData[], sourceNodeId: string, outputId: string, itemIndex: number) {
+function findResultNode(nodes: CanvasNodeData[], sourceNodeId: string, outputId: string, itemIndex: number, promptId: string) {
     return nodes.find((node) => {
         const binding = readComfyResultBinding(node);
-        return binding?.sourceNodeId === sourceNodeId && binding.outputId === outputId && binding.itemIndex === itemIndex;
+        return binding?.sourceNodeId === sourceNodeId && binding.outputId === outputId && binding.itemIndex === itemIndex && node.metadata?.comfyuiPromptId === promptId;
     });
 }
 

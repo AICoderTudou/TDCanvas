@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
 
 import type { ComfyWorkflowDefinition } from "./index";
-import { comfyCanvasPorts, createComfyWorkflowCanvasNode, registerComfyWorkflowCanvasNode } from "./canvas-node";
+import { comfyCanvasPorts, createComfyCanvasNodeSnapshot, createComfyWorkflowCanvasNode, mergeComfyCanvasNodeSnapshot, registerComfyWorkflowCanvasNode } from "./canvas-node";
 
 const definition: ComfyWorkflowDefinition = {
     id: "workflow-rain-city",
@@ -80,6 +80,33 @@ describe("ComfyUI workflow canvas node", () => {
         ]);
     });
 
+    it("hides bypassed input ports and naturally sorts the remaining media ports", () => {
+        const mediaInput = (label: string, valueType: "image" | "audio", nodeId: string): ComfyWorkflowDefinition["inputs"][number] => ({
+            id: `${nodeId}:${label}`,
+            nodeId,
+            field: label,
+            label,
+            valueType,
+            control: "media",
+            defaultValue: "",
+            required: false,
+            canvasPort: true,
+        });
+        const inputs = [mediaInput("image5", "image", "5"), mediaInput("image6", "image", "6"), mediaInput("image10", "image", "10"), mediaInput("image2", "image", "2"), mediaInput("image1", "image", "1"), mediaInput("audio2", "audio", "12"), mediaInput("audio1", "audio", "11")];
+        const ports = comfyCanvasPorts({
+            workflowId: definition.id,
+            environmentId: definition.environmentId,
+            workflowHash: definition.workflowHash,
+            runnable: true,
+            inputs,
+            outputs: definition.outputs,
+            values: {},
+            inputEnabled: { [inputs[1]!.id]: false },
+        });
+
+        expect(ports.map((port) => port.label)).toEqual(["image1", "image2", "image5", "image10", "audio1", "audio2", "Final image"]);
+    });
+
     it("embeds an immutable workflow snapshot when adding the macro to a canvas", () => {
         registerComfyWorkflowCanvasNode();
         const node = createComfyWorkflowCanvasNode(definition, { x: 500, y: 400 });
@@ -101,5 +128,11 @@ describe("ComfyUI workflow canvas node", () => {
                 },
             },
         });
+    });
+
+    it("keeps current values and bypass switches when exposed inputs are edited", () => {
+        const previous = { ...createComfyCanvasNodeSnapshot(definition), values: { "6:text": "edited", "3:seed": 99 }, inputEnabled: { "6:text": false } };
+        const nextDefinition = { ...definition, inputs: [definition.inputs[0]!] };
+        expect(mergeComfyCanvasNodeSnapshot(nextDefinition, previous)).toMatchObject({ values: { "6:text": "edited" }, inputEnabled: { "6:text": false } });
     });
 });
