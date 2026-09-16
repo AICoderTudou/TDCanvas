@@ -79,6 +79,74 @@ test("merges API JSON with object_info and finds safe exposed inputs", async () 
   assert.equal(saveImage?.exposable, true);
 });
 
+test("imports modern COMBO options as an exposed select input", () => {
+  const workflow = parseComfyApiWorkflow({
+    261: {
+      class_type: "ResolutionSelector",
+      inputs: {
+        aspect_ratio: "16:9 (Widescreen)",
+        megapixels: 0.7,
+        multiple: 8,
+      },
+    },
+  });
+  const inspection = inspectComfyWorkflow(workflow, {
+    ResolutionSelector: {
+      input: {
+        required: {
+          aspect_ratio: [
+            "COMBO",
+            {
+              default: "1:1 (Square)",
+              options: [
+                "1:1 (Square)",
+                "2:3 (Portrait Photo)",
+                "3:2 (Photo)",
+                "3:4 (Portrait Standard)",
+                "4:3 (Standard)",
+                "9:16 (Portrait Widescreen)",
+                "16:9 (Widescreen)",
+                "21:9 (Ultrawide)",
+              ],
+            },
+          ],
+          megapixels: ["FLOAT", { default: 1, min: 0.1, max: 16 }],
+          multiple: ["INT", { default: 8, min: 8, max: 128 }],
+        },
+      },
+      output: ["INT", "INT"],
+    },
+  });
+  const aspectRatio = inspection.inputs.find(
+    (input) => input.id === "261:aspect_ratio",
+  );
+
+  assert.equal(aspectRatio?.valueType, "enum");
+  assert.deepEqual(aspectRatio?.enumValues, [
+    "1:1 (Square)",
+    "2:3 (Portrait Photo)",
+    "3:2 (Photo)",
+    "3:4 (Portrait Standard)",
+    "4:3 (Standard)",
+    "9:16 (Portrait Widescreen)",
+    "16:9 (Widescreen)",
+    "21:9 (Ultrawide)",
+  ]);
+
+  const definition = buildComfyWorkflowDefinition({
+    id: "resolution-workflow",
+    name: "Resolution workflow",
+    environmentId: "env-1",
+    inspection,
+    inputs: [{ source: aspectRatio }],
+    outputs: [{ source: inspection.outputs[0] }],
+    now: "2026-09-16T00:00:00.000Z",
+  });
+
+  assert.equal(definition.inputs[0].control, "select");
+  assert.deepEqual(definition.inputs[0].enumValues, aspectRatio?.enumValues);
+});
+
 test("recommends prompt and media entry inputs without selecting unrelated parameters", () => {
   const workflow = parseComfyApiWorkflow({
     1: {

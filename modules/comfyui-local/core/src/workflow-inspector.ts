@@ -150,6 +150,7 @@ function inspectInputs(
     const currentValue = node.inputs[field];
     const spec = resolveInputSpec(specs, field);
     const internalLink = isComfyApiLink(currentValue, nodeIds);
+    const enumValues = inputEnumValues(spec?.spec);
     const valueType = inferInputValueType(
       node.class_type,
       field,
@@ -177,9 +178,7 @@ function inspectInputs(
         exposable &&
         isRecommendedCanvasInput(node.class_type, field, valueType, options),
       options,
-      enumValues: Array.isArray(spec?.spec?.[0])
-        ? [...spec.spec[0]]
-        : undefined,
+      enumValues,
     };
   });
 }
@@ -307,7 +306,7 @@ function inferInputValueType(
   if (looksLikeMediaLoader(className, fieldName, "video")) return "video";
   if (looksLikeMediaLoader(className, fieldName, "audio")) return "audio";
   const declared = spec?.[0];
-  if (Array.isArray(declared)) return "enum";
+  if (inputEnumValues(spec)) return "enum";
   switch (String(declared || "").toUpperCase()) {
     case "STRING":
       return "string";
@@ -329,6 +328,16 @@ function inferInputValueType(
   if (typeof currentValue === "number")
     return Number.isInteger(currentValue) ? "integer" : "number";
   return "json";
+}
+
+function inputEnumValues(spec: ComfyInputSpec | undefined) {
+  const declared = spec?.[0];
+  if (Array.isArray(declared)) return [...declared];
+  if (String(declared || "").toUpperCase() !== "COMBO") return undefined;
+  const options = spec?.[1]?.options;
+  if (!Array.isArray(options) || !options.every((item) => typeof item === "string"))
+    return undefined;
+  return [...options];
 }
 
 function looksLikeMediaLoader(

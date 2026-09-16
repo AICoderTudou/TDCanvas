@@ -7,6 +7,7 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
+- 导入或重新保存包含新版 `COMBO` 规格的 ComfyUI 工作流后，`ResolutionSelector.aspect_ratio` 应显示包含 1:1、2:3、3:2、3:4、4:3、9:16、16:9、21:9 的下拉选项，旧式枚举参数仍应正常显示。
 - A ComfyUI media loader used only by optional downstream inputs should be removed from the submitted graph while its canvas port is disconnected, so stale filenames from the imported API JSON are not submitted. Connecting the port should restore the loader and its references; required downstream inputs must never be bypassed.
 - Running the same ComfyUI workflow node three times sequentially should create three playable result nodes and three connections from the same output port. Each result must keep a distinct `comfyuiPromptId` and local path, while earlier results remain unchanged. Pre-submission failure creates no result; post-submission failure or cancellation updates only the current placeholder.
 - Duplicating a canvas node with incoming connections should reconnect the copy to the same upstream nodes without cloning source assets. Clear inputs in the node context menu should remove only that node's incoming connections. Alt-dragging past the movement threshold should duplicate with the same input connections, while Alt-click alone should not duplicate.

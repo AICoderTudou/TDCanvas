@@ -365,7 +365,7 @@ function ComfyWorkflowParameters({ ctx, snapshot, onEditExposure, onChangeWorkfl
                 {snapshot.inputs.map((input) => {
                     const allowedKinds = comfyInputObjectKinds(input);
                     return (
-                        <ParameterControl
+                        <ComfyWorkflowParameterControl
                             key={input.id}
                             input={input}
                             value={snapshot.values[input.id]}
@@ -394,7 +394,7 @@ function ComfyWorkflowParameters({ ctx, snapshot, onEditExposure, onChangeWorkfl
     );
 }
 
-function ParameterControl({ input, value, onChange, enabled = true, onEnabledChange, referencePicker }: { input: ComfyExposedInput; value: unknown; onChange: (value: unknown) => void; enabled?: boolean; onEnabledChange?: (enabled: boolean) => void; referencePicker?: ReactNode }) {
+export function ComfyWorkflowParameterControl({ input, value, onChange, enabled = true, onEnabledChange, referencePicker }: { input: ComfyExposedInput; value: unknown; onChange: (value: unknown) => void; enabled?: boolean; onEnabledChange?: (enabled: boolean) => void; referencePicker?: ReactNode }) {
     const { t } = useTranslation();
     const label = (
         <div className="mb-2 flex min-w-0 items-center gap-2 text-[11px] font-medium opacity-65" title={input.label}>
