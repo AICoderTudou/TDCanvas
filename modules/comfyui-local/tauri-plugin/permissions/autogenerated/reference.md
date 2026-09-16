@@ -1,6 +1,6 @@
 ## Default Permission
 
-Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.
+Allows TDCanvas to detect, start, attach, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.
 
 #### This default permission set includes the following:
 
@@ -9,6 +9,7 @@ Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache re
 - `allow-saved-environments`
 - `allow-remove-environment`
 - `allow-start-environment`
+- `allow-attach-environment`
 - `allow-stop-environment`
 - `allow-environment-status`
 - `allow-environment-logs`
@@ -27,6 +28,32 @@ Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache re
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`tdcanvas-comfyui-local:allow-attach-environment`
+
+</td>
+<td>
+
+Enables the attach_environment command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`tdcanvas-comfyui-local:deny-attach-environment`
+
+</td>
+<td>
+
+Denies the attach_environment command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>

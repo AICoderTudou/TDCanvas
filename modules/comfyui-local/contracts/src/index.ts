@@ -156,6 +156,7 @@ export type ComfyEnvironmentPhase =
 
 export type ComfyEnvironmentStatus = {
   phase: ComfyEnvironmentPhase;
+  connectionKind?: "managed" | "attached";
   pid?: number;
   port?: number;
   startedAt?: number;

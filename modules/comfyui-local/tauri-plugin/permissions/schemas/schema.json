@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the attach_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-attach-environment",
+          "markdownDescription": "Enables the attach_environment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the attach_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-attach-environment",
+          "markdownDescription": "Denies the attach_environment command without any pre-configured scope."
+        },
+        {
           "description": "Enables the detect_environment command without any pre-configured scope.",
           "type": "string",
           "const": "allow-detect-environment",
@@ -475,10 +487,10 @@
           "markdownDescription": "Denies the wait_for_execution command without any pre-configured scope."
         },
         {
-          "description": "Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`",
+          "description": "Allows TDCanvas to detect, start, attach, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-attach-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows TDCanvas to detect, start, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`"
+          "markdownDescription": "Allows TDCanvas to detect, start, attach, stop, inspect, execute workflows, and cache results from the user-selected local ComfyUI environment.\n#### This default permission set includes:\n\n- `allow-select-environment`\n- `allow-select-environment-python`\n- `allow-saved-environments`\n- `allow-remove-environment`\n- `allow-start-environment`\n- `allow-attach-environment`\n- `allow-stop-environment`\n- `allow-environment-status`\n- `allow-environment-logs`\n- `allow-system-stats`\n- `allow-object-info`\n- `allow-upload-input`\n- `allow-queue-workflow`\n- `allow-wait-for-execution`\n- `allow-interrupt-execution`"
         }
       ]
     }

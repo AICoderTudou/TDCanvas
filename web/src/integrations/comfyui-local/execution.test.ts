@@ -23,6 +23,7 @@ vi.mock("./index", () => ({
 import { createComfyWorkflowCanvasNode } from "./canvas-node";
 import { readComfyResultBinding } from "./result-nodes";
 import { runComfyWorkflowNode, stopComfyWorkflowNode } from "./execution";
+import { comfyExecutionManager } from "./execution-manager-store";
 import type { ComfyWorkflowDefinition } from "./index";
 import type { CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -239,7 +240,14 @@ function createContext(source: CanvasNodeData, nodes: CanvasNodeData[], connecti
             }
         }
     };
+    comfyExecutionManager.registerProject("test-canvas", {
+        getTitle: () => "测试画布",
+        getNodes: () => nodes,
+        getConnections: () => connections,
+        applyOps,
+    });
     return {
+        projectId: "test-canvas",
         canvasTitle: "测试画布",
         node: source,
         theme: {} as CanvasNodeContext["theme"],

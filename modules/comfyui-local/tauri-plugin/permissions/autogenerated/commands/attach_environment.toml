@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-attach-environment"
+description = "Enables the attach_environment command without any pre-configured scope."
+commands.allow = ["attach_environment"]
+
+[[permission]]
+identifier = "deny-attach-environment"
+description = "Denies the attach_environment command without any pre-configured scope."
+commands.deny = ["attach_environment"]

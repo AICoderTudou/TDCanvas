@@ -13,10 +13,13 @@ import type { CanvasNodeToolbarItem, CanvasPluginAi, CanvasPluginHost } from "@/
 import type { ReferenceImage } from "@/types/image";
 import type { CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import { comfyExecutionManager } from "@/integrations/comfyui-local/execution-manager-store";
 
 type CanvasTheme = (typeof canvasThemes)[keyof typeof canvasThemes];
 
 type PluginHostParams = {
+    projectId: string;
+    projectReady: boolean;
     canvasTitle: string;
     effectiveConfig: AiConfig;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
@@ -36,7 +39,7 @@ type PluginHostParams = {
  */
 export function usePluginHost(params: PluginHostParams) {
     const { t } = useTranslation();
-    const { canvasTitle, effectiveConfig, isAiConfigReady, openConfigDialog, theme, nodesRef, connectionsRef, viewportRef, setNodes, setDialogNodeId, applyAgentOps } = params;
+    const { projectId, projectReady, canvasTitle, effectiveConfig, isAiConfigReady, openConfigDialog, theme, nodesRef, connectionsRef, viewportRef, setNodes, setDialogNodeId, applyAgentOps } = params;
 
     // Host capabilities available to plugin nodes; methods receive nodeId and are not bound to a specific node.
     const pluginAi = useMemo<CanvasPluginAi>(() => {
@@ -83,6 +86,7 @@ export function usePluginHost(params: PluginHostParams) {
 
     const pluginHost = useMemo<CanvasPluginHost>(
         () => ({
+            projectId,
             canvasTitle,
             getNode: (id) => nodesRef.current.find((node) => node.id === id) || null,
             getNodes: () => nodesRef.current,
@@ -106,8 +110,18 @@ export function usePluginHost(params: PluginHostParams) {
             openPanel: (nodeId) => setDialogNodeId(nodeId),
             closePanel: () => setDialogNodeId(null),
         }),
-        [applyAgentOps, canvasTitle, pluginAi],
+        [applyAgentOps, canvasTitle, pluginAi, projectId],
     );
+
+    useEffect(() => {
+        if (!projectReady) return;
+        return comfyExecutionManager.registerProject(projectId, {
+                getTitle: () => canvasTitle,
+                getNodes: () => nodesRef.current,
+                getConnections: () => connectionsRef.current,
+                applyOps: (ops) => applyAgentOps(ops),
+            });
+    }, [applyAgentOps, canvasTitle, connectionsRef, nodesRef, projectId, projectReady]);
 
     const renderPluginPanel = useCallback(
         (panelNode: CanvasNodeData) => {

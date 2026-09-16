@@ -60,6 +60,7 @@ import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
+import { CanvasWorkspaceTabs } from "@/components/canvas/canvas-workspace-tabs";
 import { CanvasEmptyGuide } from "@/components/canvas/canvas-empty-guide";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
@@ -273,6 +274,7 @@ function TDCanvasProjectPage() {
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [projectLoaded, setProjectLoaded] = useState(false);
+    const loadedProjectIdRef = useRef<string | null>(null);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
@@ -367,6 +369,8 @@ function TDCanvasProjectPage() {
 
     useEffect(() => {
         if (!hydrated) return;
+        let disposed = false;
+        loadedProjectIdRef.current = null;
         setProjectLoaded(false);
         const project = openProject(projectId);
         if (!project) {
@@ -375,16 +379,25 @@ function TDCanvasProjectPage() {
         }
 
         const restore = async () => {
-            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(migrateLegacyGenerationNodes(mergeAitudouTaskJournal(projectId, project.nodes))));
-            const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
+            let source = project;
+            let restoredNodes: CanvasNodeData[] = [];
+            let restoredSessions: CanvasAssistantSession[] = [];
+            while (!disposed) {
+                restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(migrateLegacyGenerationNodes(mergeAitudouTaskJournal(projectId, source.nodes))));
+                restoredSessions = await hydrateAssistantImages(source.chatSessions || []);
+                const latest = useCanvasStore.getState().openProject(projectId);
+                if (!latest || latest === source) break;
+                source = latest;
+            }
+            if (disposed) return;
             setNodes(restoredNodes);
-            setConnections(project.connections);
+            setConnections(source.connections);
             setChatSessions(restoredSessions);
-            setActiveChatId(project.activeChatId || null);
-            setInputMode(project.inputMode || "connections");
-            setBackgroundMode(migrateCanvasBackgroundMode(projectId, project.backgroundMode));
-            setShowImageInfo(project.showImageInfo || false);
-            setViewport(project.viewport);
+            setActiveChatId(source.activeChatId || null);
+            setInputMode(source.inputMode || "connections");
+            setBackgroundMode(migrateCanvasBackgroundMode(projectId, source.backgroundMode));
+            setShowImageInfo(source.showImageInfo || false);
+            setViewport(source.viewport);
             historyRef.current = { past: [], future: [] };
             if (historyCommitTimerRef.current) {
                 clearTimeout(historyCommitTimerRef.current);
@@ -392,21 +405,25 @@ function TDCanvasProjectPage() {
             }
             lastHistoryRef.current = {
                 nodes: restoredNodes,
-                connections: project.connections,
+                connections: source.connections,
                 chatSessions: restoredSessions,
-                activeChatId: project.activeChatId || null,
-                backgroundMode: project.backgroundMode,
-                showImageInfo: project.showImageInfo || false,
-                inputMode: project.inputMode || "connections",
+                activeChatId: source.activeChatId || null,
+                backgroundMode: source.backgroundMode,
+                showImageInfo: source.showImageInfo || false,
+                inputMode: source.inputMode || "connections",
             };
             setHistoryState({ canUndo: false, canRedo: false });
+            loadedProjectIdRef.current = projectId;
             setProjectLoaded(true);
         };
         void restore();
+        return () => {
+            disposed = true;
+        };
     }, [hydrated, navigate, openProject, projectId]);
 
     useEffect(() => {
-        if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
+        if (!projectLoaded || loadedProjectIdRef.current !== projectId || applyingHistoryRef.current || historyPausedRef.current) return;
         const next = createHistoryEntry();
         const previous = lastHistoryRef.current;
         if (
@@ -438,10 +455,10 @@ function TDCanvasProjectPage() {
                 historyCommitTimerRef.current = null;
             }
         };
-    }, [activeChatId, backgroundMode, chatSessions, connections, createHistoryEntry, inputMode, nodes, projectLoaded, showImageInfo]);
+    }, [activeChatId, backgroundMode, chatSessions, connections, createHistoryEntry, inputMode, nodes, projectId, projectLoaded, showImageInfo]);
 
     useEffect(() => {
-        if (!projectLoaded || historyPausedRef.current) return;
+        if (!projectLoaded || loadedProjectIdRef.current !== projectId || historyPausedRef.current) return;
         updateProject(projectId, { nodes, connections, chatSessions, activeChatId, inputMode, backgroundMode, showImageInfo });
     }, [activeChatId, backgroundMode, chatSessions, connections, inputMode, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
 
@@ -450,7 +467,7 @@ function TDCanvasProjectPage() {
     }, [dialogNodeId]);
 
     useEffect(() => {
-        if (!projectLoaded) return;
+        if (!projectLoaded || loadedProjectIdRef.current !== projectId) return;
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         viewportSaveTimerRef.current = setTimeout(() => {
             updateProject(projectId, { viewport: viewportRef.current });
@@ -743,6 +760,8 @@ function TDCanvasProjectPage() {
     });
 
     const { pluginHost, renderPluginPanel, buildNodeToolbarItems } = usePluginHost({
+        projectId,
+        projectReady: projectLoaded && loadedProjectIdRef.current === projectId,
         canvasTitle: currentProject?.title || t("canvas.projectPage.untitledCanvas"),
         effectiveConfig,
         isAiConfigReady,
@@ -3642,6 +3661,7 @@ function TDCanvasProjectPage() {
         <main className="relative flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
+                <CanvasWorkspaceTabs activeProjectId={projectId} />
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}
                     titleDraft={titleDraft}

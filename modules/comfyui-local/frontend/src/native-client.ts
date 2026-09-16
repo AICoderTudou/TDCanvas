@@ -37,6 +37,11 @@ export function createComfyNativeClient(invoke: ComfyNativeInvoke) {
       invoke<ComfyEnvironmentLaunchResult>(command("start_environment"), {
         profileId,
       }),
+    attachEnvironment: (profileId: string, port: number) =>
+      invoke<ComfyEnvironmentStatus>(command("attach_environment"), {
+        profileId,
+        port,
+      }),
     stopEnvironment: () =>
       invoke<ComfyEnvironmentStatus>(command("stop_environment")),
     status: () => invoke<ComfyEnvironmentStatus>(command("environment_status")),

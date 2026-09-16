@@ -107,6 +107,24 @@ fn open_aitudou_registration() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_local_comfy_webui(port: u16) -> Result<(), String> {
+    let url = format!("http://127.0.0.1:{port}");
+
+    #[cfg(target_os = "windows")]
+    let mut command = Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = Command::new("xdg-open");
+
+    command
+        .arg(url)
+        .spawn()
+        .map_err(|error| format!("无法打开 ComfyUI WebUI：{error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
 fn allow_download_directory(app: AppHandle, directory: String) -> Result<String, String> {
     let path = resolve_download_directory(&app, Some(directory))?;
     app.fs_scope()
@@ -195,6 +213,7 @@ pub fn run() {
             splash_animation_complete,
             open_downloads_directory,
             open_aitudou_registration,
+            open_local_comfy_webui,
             allow_download_directory,
             media_cache::cache_remote_media,
             media_cache::import_legacy_cached_media

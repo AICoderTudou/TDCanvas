@@ -26,6 +26,10 @@ export async function invokeDesktop<T>(command: string, args?: Record<string, un
     return invoke<T>(command, args);
 }
 
+export async function openLocalComfyWebUi(port: number) {
+    await invokeDesktop<void>("open_local_comfy_webui", { port });
+}
+
 export function desktopFileUrl(absolutePath: string) {
     return isTauriRuntime() && absolutePath ? convertFileSrc(absolutePath) : "";
 }
