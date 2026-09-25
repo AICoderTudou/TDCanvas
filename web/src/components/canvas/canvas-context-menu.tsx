@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ClipboardCopy, ClipboardPaste, Plus, Redo2, Trash2, Undo2, Upload } from "lucide-react";
+import { ClipboardCopy, ClipboardPaste, Plus, Redo2, Unplug, Trash2, Undo2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -20,10 +20,12 @@ type CanvasContextMenuProps = {
     onCopyAll: () => void;
     onPaste: () => void;
     onDuplicate: () => void;
+    canClearInputs: boolean;
+    onClearInputs: () => void;
     onDelete: () => void;
 };
 
-export function CanvasNodeContextMenu({ menu, canUndo, canRedo, canCopyAll, onClose, onUpload, onAddNode, onUndo, onRedo, onCopyAll, onPaste, onDuplicate, onDelete }: CanvasContextMenuProps) {
+export function CanvasNodeContextMenu({ menu, canUndo, canRedo, canCopyAll, onClose, onUpload, onAddNode, onUndo, onRedo, onCopyAll, onPaste, onDuplicate, canClearInputs, onClearInputs, onDelete }: CanvasContextMenuProps) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const menuRef = useRef<HTMLDivElement>(null);
@@ -82,6 +84,7 @@ export function CanvasNodeContextMenu({ menu, canUndo, canRedo, canCopyAll, onCl
             ) : (
                 <>
                     {menu.type === "node" ? <MenuButton icon={<Plus className="size-4" />} label={t("canvas.controls.duplicate")} onClick={() => run(onDuplicate)} /> : null}
+                    {menu.type === "node" ? <MenuButton icon={<Unplug className="size-4" />} label={t("canvas.controls.clearInputs")} onClick={() => run(onClearInputs)} disabled={!canClearInputs} /> : null}
                     <MenuButton icon={<Trash2 className="size-4" />} label={t("canvas.controls.delete")} onClick={() => run(onDelete)} danger />
                 </>
             )}

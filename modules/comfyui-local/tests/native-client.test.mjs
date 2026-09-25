@@ -10,11 +10,13 @@ test("uses the ACL-aligned plugin namespace and only starts native-authorized pr
         return { ready: true };
     });
     await client.selectEnvironment();
+    await client.attachEnvironment("env", 8188);
     await client.startEnvironment("env");
     await client.queueWorkflow("env", { 1: { class_type: "SaveImage", inputs: {} } });
 
     assert.deepEqual(calls, [
         { command: "plugin:tdcanvas-comfyui-local|select_environment", args: undefined },
+        { command: "plugin:tdcanvas-comfyui-local|attach_environment", args: { profileId: "env", port: 8188 } },
         { command: "plugin:tdcanvas-comfyui-local|start_environment", args: { profileId: "env" } },
         { command: "plugin:tdcanvas-comfyui-local|queue_workflow", args: { profileId: "env", workflow: { 1: { class_type: "SaveImage", inputs: {} } } } },
     ]);

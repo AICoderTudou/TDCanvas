@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { App, Button } from "antd";
-import { AlertCircle, ArrowRight, ChevronDown, CircleStop, Cpu, FileJson, FolderOpen, LoaderCircle, Play, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
+import { App, Button, InputNumber } from "antd";
+import { AlertCircle, ArrowRight, ChevronDown, CircleStop, Cpu, ExternalLink, FileJson, FolderOpen, Link2, LoaderCircle, Play, Plus, RefreshCw, TerminalSquare, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -12,7 +12,7 @@ import { createComfyResultNodes } from "@/integrations/comfyui-local/result-node
 import { ComfyWorkflowImportWizard } from "@/integrations/comfyui-local/workflow-import-wizard";
 import { deleteComfyWorkflowDefinition, listComfyWorkflowDefinitions } from "@/integrations/comfyui-local/workflow-library";
 import { cn } from "@/lib/utils";
-import { isTauriRuntime } from "@/services/platform/desktop-runtime";
+import { isTauriRuntime, openLocalComfyWebUi } from "@/services/platform/desktop-runtime";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 
 const EMPTY_STATUS: ComfyEnvironmentStatus = { phase: "idle" };
@@ -32,7 +32,8 @@ export default function ComfyUiLocalPage() {
     const [editing, setEditing] = useState(false);
     const [loading, setLoading] = useState(desktop);
     const [detecting, setDetecting] = useState(false);
-    const [action, setAction] = useState<"start" | "stop" | null>(null);
+    const [action, setAction] = useState<"start" | "attach" | "stop" | null>(null);
+    const [attachPort, setAttachPort] = useState(8188);
     const [workflows, setWorkflows] = useState<ComfyWorkflowDefinition[]>([]);
     const [importOpen, setImportOpen] = useState(false);
 
@@ -163,6 +164,20 @@ export default function ComfyUiLocalPage() {
         }
     };
 
+    const attachEnvironment = async () => {
+        if (!profile) return;
+        setAction("attach");
+        try {
+            setStatus(await comfyNativeClient.attachEnvironment(profile.id, attachPort));
+            message.success(t("comfyuiLocal.runtime.attached", { port: attachPort }));
+        } catch (error) {
+            message.error(errorMessage(error));
+            await refreshRuntime().catch(() => undefined);
+        } finally {
+            setAction(null);
+        }
+    };
+
     const stopEnvironment = async () => {
         setAction("stop");
         try {
@@ -263,6 +278,9 @@ export default function ComfyUiLocalPage() {
                         logs={recentLogs}
                         busy={busy}
                         onStart={() => void startEnvironment()}
+                        attachPort={attachPort}
+                        onAttachPortChange={setAttachPort}
+                        onAttach={() => void attachEnvironment()}
                         onStop={() => void stopEnvironment()}
                         onRefresh={() => void refreshRuntime().catch((error) => message.error(errorMessage(error)))}
                         onChangeEnvironment={() => void changeEnvironment()}
@@ -377,6 +395,9 @@ type RuntimeProps = {
     logs: ComfyEnvironmentLogEntry[];
     busy: boolean;
     onStart: () => void;
+    attachPort: number;
+    onAttachPortChange: (port: number) => void;
+    onAttach: () => void;
     onStop: () => void;
     onRefresh: () => void;
     onChangeEnvironment: () => void;
@@ -387,8 +408,9 @@ type RuntimeProps = {
     onDeleteWorkflow: (definition: ComfyWorkflowDefinition) => void;
 };
 
-function EnvironmentRuntime({ profile, status, logs, busy, onStart, onStop, onRefresh, onChangeEnvironment, onForget, workflows, onImport, onAddToCanvas, onDeleteWorkflow }: RuntimeProps) {
+function EnvironmentRuntime({ profile, status, logs, busy, onStart, attachPort, onAttachPortChange, onAttach, onStop, onRefresh, onChangeEnvironment, onForget, workflows, onImport, onAddToCanvas, onDeleteWorkflow }: RuntimeProps) {
     const { t } = useTranslation();
+    const { message } = App.useApp();
     const active = status.phase === "running" || status.phase === "starting";
     return (
         <section className="py-7 sm:py-9">
@@ -404,6 +426,14 @@ function EnvironmentRuntime({ profile, status, logs, busy, onStart, onStop, onRe
                     {status.message ? <p className="mt-3 max-w-2xl text-[12px] leading-5 text-amber-600 dark:text-amber-300/80">{status.message}</p> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                    {!active ? (
+                        <div className="flex">
+                            <InputNumber min={1} max={65535} value={attachPort} onChange={(value) => onAttachPortChange(value || 8188)} className="w-24" aria-label={t("comfyuiLocal.runtime.externalPort")} />
+                            <Button icon={<Link2 className="size-3.5" />} onClick={onAttach} loading={busy}>
+                                {t("comfyuiLocal.runtime.attach")}
+                            </Button>
+                        </div>
+                    ) : null}
                     <Button icon={<FolderOpen className="size-4" />} onClick={onChangeEnvironment} disabled={busy}>
                         {t("comfyuiLocal.runtime.change")}
                     </Button>
@@ -411,9 +441,16 @@ function EnvironmentRuntime({ profile, status, logs, busy, onStart, onStop, onRe
                         {t("comfyuiLocal.runtime.refresh")}
                     </Button>
                     {active ? (
-                        <Button danger icon={<CircleStop className="size-3.5" />} onClick={onStop} loading={busy}>
-                            {t("comfyuiLocal.runtime.stop")}
-                        </Button>
+                        <>
+                            {status.port ? (
+                                <Button icon={<ExternalLink className="size-3.5" />} onClick={() => void openLocalComfyWebUi(status.port!).catch((error) => message.error(errorMessage(error)))}>
+                                    {t("comfyuiLocal.runtime.openWebUi")}
+                                </Button>
+                            ) : null}
+                            <Button danger icon={<CircleStop className="size-3.5" />} onClick={onStop} loading={busy}>
+                                {t(status.connectionKind === "attached" ? "comfyuiLocal.runtime.disconnect" : "comfyuiLocal.runtime.stop")}
+                            </Button>
+                        </>
                     ) : (
                         <Button type="primary" icon={<Play className="size-3.5" />} onClick={onStart} loading={busy}>
                             {t("comfyuiLocal.runtime.start")}
@@ -422,8 +459,9 @@ function EnvironmentRuntime({ profile, status, logs, busy, onStart, onStop, onRe
                 </div>
             </div>
 
-            <dl className="grid border-b border-black/[0.08] dark:border-white/[0.08] sm:grid-cols-3">
+            <dl className="grid border-b border-black/[0.08] dark:border-white/[0.08] sm:grid-cols-4">
                 <RuntimeDetail label={t("comfyuiLocal.runtime.state")} value={t(`comfyuiLocal.phase.${status.phase}`)} />
+                <RuntimeDetail label={t("comfyuiLocal.runtime.connection")} value={t(`comfyuiLocal.runtime.${status.connectionKind === "attached" ? "attachedMode" : "managedMode"}`)} />
                 <RuntimeDetail label={t("comfyuiLocal.runtime.port")} value={status.port ? `127.0.0.1:${status.port}` : "—"} />
                 <RuntimeDetail label="PID" value={status.pid ? String(status.pid) : "—"} />
             </dl>

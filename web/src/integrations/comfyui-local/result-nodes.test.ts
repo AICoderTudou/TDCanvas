@@ -116,6 +116,16 @@ describe("ComfyUI managed result nodes", () => {
         }
     });
 
+    it("appends batch items in item index order", () => {
+        const imageDefinition = { ...definition, outputs: [definition.outputs[0]!] };
+        const source = createComfyWorkflowCanvasNode(imageDefinition, { x: 400, y: 300 });
+
+        const ops = ensureComfyResultNodeOps(source, imageDefinition, [source], [], { promptId: "prompt-1", itemIndexes: { "10:result": [2, 0, 1] } });
+        const indexes = ops.filter((op) => op.type === "add_node").map((op) => readComfyResultBinding({ id: op.id!, type: op.nodeType!, title: op.title!, position: op.position!, width: op.width!, height: op.height!, metadata: op.metadata })?.itemIndex);
+
+        expect(indexes).toEqual([0, 1, 2]);
+    });
+
     it("removes stale managed results before binding a different workflow", () => {
         const source = createComfyWorkflowCanvasNode(definition, { x: 400, y: 300 });
         const graph = createComfyResultNodes(source, definition);

@@ -310,6 +310,7 @@ export default {
         retrySuccess: "重试成功",
     },
     canvas: {
+        tabs: { label: "已打开的画布", close: "关闭画布 {{title}}" },
         defaultTitle: "TDCanvas {{count}}",
         library: "画布库",
         title: "TDCanvas",
@@ -838,7 +839,7 @@ export default {
             imagePreview: "引用图片预览",
             resources: { image: "图片{{index}}", video: "视频{{index}}", audio: "音频{{index}}", text: "文本{{index}}" },
         },
-        controls: { ratio: "比例", duplicate: "复制", delete: "删除", images: "{{count}} 张", reasoning: "推理" },
+        controls: { ratio: "比例", duplicate: "复制", clearInputs: "清理输入", delete: "删除", images: "{{count}} 张", reasoning: "推理" },
         generation: {
             interrupted: "页面刷新后生成已中断，请重新生成。",
             front: "正面视角",
@@ -925,6 +926,14 @@ export default {
         },
         runtime: {
             start: "启动 ComfyUI",
+            attach: "连接已有实例",
+            attached: "已连接 127.0.0.1:{{port}}",
+            disconnect: "断开连接",
+            externalPort: "已有 ComfyUI 端口",
+            openWebUi: "打开 WebUI",
+            connection: "连接方式",
+            attachedMode: "外部实例",
+            managedMode: "客户端启动",
             stop: "停止",
             starting: "ComfyUI 正在后台启动",
             stopped: "ComfyUI 已停止",

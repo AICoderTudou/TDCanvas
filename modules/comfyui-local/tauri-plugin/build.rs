@@ -4,6 +4,7 @@ const COMMANDS: &[&str] = &[
     "saved_environments",
     "remove_environment",
     "start_environment",
+    "attach_environment",
     "stop_environment",
     "environment_status",
     "environment_logs",

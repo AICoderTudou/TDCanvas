@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 type CanvasUiStore = {
+    openProjectIds: string[];
     editingProjectId: string | null;
     editingProjectTitle: string;
     selectedProjectIds: string[];
@@ -11,9 +12,11 @@ type CanvasUiStore = {
     toggleSelectedProjectId: (id: string, selected: boolean) => void;
     setDeleteProjectIds: (ids: string[]) => void;
     removeSelectedProjectIds: (ids: string[]) => void;
+    setOpenProjectIds: (ids: string[]) => void;
 };
 
 export const useCanvasUiStore = create<CanvasUiStore>((set) => ({
+    openProjectIds: [],
     editingProjectId: null,
     editingProjectTitle: "",
     selectedProjectIds: [],
@@ -24,4 +27,5 @@ export const useCanvasUiStore = create<CanvasUiStore>((set) => ({
     toggleSelectedProjectId: (id, selected) => set((state) => ({ selectedProjectIds: selected ? [...new Set([...state.selectedProjectIds, id])] : state.selectedProjectIds.filter((item) => item !== id) })),
     setDeleteProjectIds: (deleteProjectIds) => set({ deleteProjectIds }),
     removeSelectedProjectIds: (ids) => set((state) => ({ selectedProjectIds: state.selectedProjectIds.filter((id) => !ids.includes(id)) })),
+    setOpenProjectIds: (openProjectIds) => set({ openProjectIds }),
 }));

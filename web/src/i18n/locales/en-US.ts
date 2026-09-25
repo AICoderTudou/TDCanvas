@@ -316,6 +316,7 @@ export default {
         retrySuccess: "Retry succeeded",
     },
     canvas: {
+        tabs: { label: "Open canvases", close: "Close canvas {{title}}" },
         defaultTitle: "TDCanvas {{count}}",
         library: "Canvas library",
         title: "TDCanvas",
@@ -845,7 +846,7 @@ export default {
             imagePreview: "Referenced image preview",
             resources: { image: "Image {{index}}", video: "Video {{index}}", audio: "Audio {{index}}", text: "Text {{index}}" },
         },
-        controls: { ratio: "Ratio", duplicate: "Duplicate", delete: "Delete", images: "{{count}} images", reasoning: "Reasoning" },
+        controls: { ratio: "Ratio", duplicate: "Duplicate", clearInputs: "Clear inputs", delete: "Delete", images: "{{count}} images", reasoning: "Reasoning" },
         generation: {
             interrupted: "Generation was interrupted by a page refresh. Generate again.",
             front: "front view",
@@ -946,6 +947,14 @@ export default {
         },
         runtime: {
             start: "Start ComfyUI",
+            attach: "Attach instance",
+            attached: "Attached to 127.0.0.1:{{port}}",
+            disconnect: "Disconnect",
+            externalPort: "Existing ComfyUI port",
+            openWebUi: "Open WebUI",
+            connection: "Connection",
+            attachedMode: "External instance",
+            managedMode: "App managed",
             stop: "Stop",
             starting: "ComfyUI is starting in the background",
             stopped: "ComfyUI stopped",

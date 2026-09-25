@@ -10,21 +10,28 @@ import { comfyNativeClient, materializeComfyWorkflow, type ComfyExecutionOutput,
 import { getComfyWorkflowDefinition } from "./workflow-library";
 import { ensureComfyResultNodeOps, readComfyResultBinding } from "./result-nodes";
 import type { ComfyCanvasNodeSnapshot } from "./canvas-node";
-
-type ActiveRun = { promptId?: string; canceled: boolean };
-const activeRuns = new Map<string, ActiveRun>();
+import { comfyExecutionManager } from "./execution-manager-store";
 
 export function isComfyWorkflowRunning(node: CanvasNodeData) {
-    return activeRuns.has(node.id) || readComfyRun(node.metadata)?.phase === "queued" || readComfyRun(node.metadata)?.phase === "running";
+    return comfyExecutionManager.hasNodeRun(node.id) || readComfyRun(node.metadata)?.phase === "queued" || readComfyRun(node.metadata)?.phase === "running";
 }
 
 export async function runComfyWorkflowNode(ctx: CanvasNodeContext) {
-    if (activeRuns.has(ctx.node.id)) return;
+    const projectId = ctx.projectId;
+    const active = comfyExecutionManager.beginRun(projectId, ctx.node.id);
+    if (!active) return;
+    const runCtx = managedContext(ctx);
     const snapshot = readComfySnapshot(ctx.node.metadata);
-    if (!snapshot) return setSourceError(ctx, i18n.t("comfyuiLocal.execution.chooseWorkflow"));
-    if (!snapshot.runnable) return setSourceError(ctx, i18n.t("comfyuiLocal.execution.dependenciesMissing"));
-    const active: ActiveRun = { canceled: false };
-    activeRuns.set(ctx.node.id, active);
+    if (!snapshot) {
+        setSourceError(runCtx, i18n.t("comfyuiLocal.execution.chooseWorkflow"));
+        comfyExecutionManager.endRun(projectId, ctx.node.id, active);
+        return;
+    }
+    if (!snapshot.runnable) {
+        setSourceError(runCtx, i18n.t("comfyuiLocal.execution.dependenciesMissing"));
+        comfyExecutionManager.endRun(projectId, ctx.node.id, active);
+        return;
+    }
     const startedAt = Date.now();
     try {
         const definition = await getComfyWorkflowDefinition(snapshot.workflowId);
@@ -33,41 +40,55 @@ export async function runComfyWorkflowNode(ctx: CanvasNodeContext) {
         if (status.phase !== "running") throw new Error(i18n.t("comfyuiLocal.execution.environmentStopped"));
         if (status.profileId !== snapshot.environmentId) throw new Error(i18n.t("comfyuiLocal.execution.environmentMismatch"));
 
-        const source = ctx.getNode(ctx.node.id) || ctx.node;
-        markSourceAndResults(ctx, "loading", { phase: "preparing", startedAt });
+        const source = runCtx.getNode(ctx.node.id) || ctx.node;
+        markSourceAndResults(runCtx, "loading", { phase: "preparing", startedAt });
 
         const disabledInputIds = new Set(definition.inputs.filter((input) => snapshot.inputEnabled?.[input.id] === false).map((input) => input.id));
-        const connectedValues = await collectConnectedValues(ctx, definition, disabledInputIds);
+        const connectedValues = await collectConnectedValues(runCtx, definition, disabledInputIds);
         if (active.canceled) return;
         const workflow = materializeComfyWorkflow(definition, snapshot.values, connectedValues, disabledInputIds);
         const queued = await comfyNativeClient.queueWorkflow(snapshot.environmentId, workflow);
         active.promptId = queued.promptId;
-        ensureResultNodes(ctx, source, definition, [], queued.promptId);
-        markSourceAndResults(ctx, "loading", { phase: "running", promptId: queued.promptId, startedAt }, queued.promptId);
+        ensureResultNodes(runCtx, source, definition, [], queued.promptId);
+        markSourceAndResults(runCtx, "loading", { phase: "running", promptId: queued.promptId, startedAt }, queued.promptId);
 
-        const result = await comfyNativeClient.waitForExecution(snapshot.environmentId, queued.promptId, definition.outputs, ctx.canvasTitle);
+        const result = await comfyNativeClient.waitForExecution(snapshot.environmentId, queued.promptId, definition.outputs, runCtx.canvasTitle);
         if (active.canceled) return;
-        applyExecutionResult(ctx, source, definition, result.outputs, result.promptId, result.completedAt);
+        applyExecutionResult(runCtx, source, definition, result.outputs, result.promptId, result.completedAt);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (active.canceled) {
-            markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, startedAt, completedAt: Date.now() }, active.promptId);
+            markSourceAndResults(runCtx, "idle", { phase: "canceled", promptId: active.promptId, startedAt, completedAt: Date.now() }, active.promptId);
         } else {
-            setSourceError(ctx, message, { phase: "failed", promptId: active.promptId, startedAt, completedAt: Date.now() });
-            markResultNodes(ctx, "error", message, active.promptId);
+            setSourceError(runCtx, message, { phase: "failed", promptId: active.promptId, startedAt, completedAt: Date.now() });
+            markResultNodes(runCtx, "error", message, active.promptId);
         }
     } finally {
-        if (activeRuns.get(ctx.node.id) === active) activeRuns.delete(ctx.node.id);
+        comfyExecutionManager.endRun(projectId, ctx.node.id, active);
     }
 }
 
 export async function stopComfyWorkflowNode(ctx: CanvasNodeContext) {
-    const active = activeRuns.get(ctx.node.id);
+    const projectId = ctx.projectId;
+    const active = comfyExecutionManager.cancelRun(projectId, ctx.node.id);
     const snapshot = readComfySnapshot(ctx.node.metadata);
     if (!active || !snapshot) return;
-    active.canceled = true;
     if (active.promptId) await comfyNativeClient.interruptExecution(snapshot.environmentId, active.promptId).catch(() => undefined);
-    markSourceAndResults(ctx, "idle", { phase: "canceled", promptId: active.promptId, completedAt: Date.now() }, active.promptId);
+    markSourceAndResults(managedContext(ctx), "idle", { phase: "canceled", promptId: active.promptId, completedAt: Date.now() }, active.promptId);
+}
+
+function managedContext(ctx: CanvasNodeContext): CanvasNodeContext {
+    const projectId = ctx.projectId;
+    const adapter = () => comfyExecutionManager.project(projectId);
+    return {
+        ...ctx,
+        getNode: (id) => adapter()?.getNodes().find((node) => node.id === id) || ctx.getNode(id),
+        getNodes: () => adapter()?.getNodes() || ctx.getNodes(),
+        getConnections: () => adapter()?.getConnections() || ctx.getConnections(),
+        getInputConnections: (portId) => (adapter()?.getConnections() || ctx.getConnections()).filter((connection) => connection.toNodeId === ctx.node.id && (portId === undefined || connection.toPortId === portId)),
+        getOutputConnections: (portId) => (adapter()?.getConnections() || ctx.getConnections()).filter((connection) => connection.fromNodeId === ctx.node.id && (portId === undefined || connection.fromPortId === portId)),
+        applyOps: (ops) => comfyExecutionManager.applyOps(projectId, ops),
+    };
 }
 
 async function collectConnectedValues(ctx: CanvasNodeContext, definition: ComfyWorkflowDefinition, disabledInputIds: ReadonlySet<string>) {

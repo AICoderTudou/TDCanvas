@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     ffi::OsString,
     fs,
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
@@ -76,10 +76,18 @@ pub enum EnvironmentPhase {
     Failed,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EnvironmentConnectionKind {
+    Managed,
+    Attached,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnvironmentStatus {
     pub phase: EnvironmentPhase,
+    pub connection_kind: EnvironmentConnectionKind,
     pub pid: Option<u32>,
     pub port: Option<u16>,
     pub started_at: Option<u64>,
@@ -318,9 +326,11 @@ struct ProcessInner {
     started_at: Option<u64>,
     message: Option<String>,
     profile_id: Option<String>,
+    connection_kind: EnvironmentConnectionKind,
     generation: u64,
     log_bytes: usize,
     logs: VecDeque<EnvironmentLogEntry>,
+    canceled_prompts: HashSet<String>,
 }
 
 impl Default for ProcessInner {
@@ -333,9 +343,11 @@ impl Default for ProcessInner {
             started_at: None,
             message: None,
             profile_id: None,
+            connection_kind: EnvironmentConnectionKind::Managed,
             generation: 0,
             log_bytes: 0,
             logs: VecDeque::new(),
+            canceled_prompts: HashSet::new(),
         }
     }
 }
@@ -371,6 +383,8 @@ impl ComfyProcessManager {
             inner.pid = None;
             inner.port = None;
             inner.message = None;
+            inner.connection_kind = EnvironmentConnectionKind::Managed;
+            inner.canceled_prompts.clear();
             inner.child.take()
         };
         if let Some(mut child) = child {
@@ -400,6 +414,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             saved_environments,
             remove_environment,
             start_environment,
+            attach_environment,
             stop_environment,
             environment_status,
             environment_logs,
@@ -580,8 +595,10 @@ async fn start_environment<R: Runtime>(
         inner.started_at = Some(started_at);
         inner.message = Some("正在等待 ComfyUI 完成自定义节点加载".to_owned());
         inner.profile_id = Some(profile.id.clone());
+        inner.connection_kind = EnvironmentConnectionKind::Managed;
         inner.logs.clear();
         inner.log_bytes = 0;
+        inner.canceled_prompts.clear();
         inner.child = Some(child);
         inner.generation
     };
@@ -608,6 +625,56 @@ async fn start_environment<R: Runtime>(
 }
 
 #[tauri::command]
+async fn attach_environment<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, ComfyProcessManager>,
+    registry: State<'_, EnvironmentRegistry>,
+    profile_id: String,
+    port: u16,
+) -> Result<EnvironmentStatus, String> {
+    let _lifecycle = state.lifecycle.lock().await;
+    let profile = registry.profile(&profile_id)?;
+    {
+        let mut inner = state
+            .inner
+            .lock()
+            .map_err(|_| "ComfyUI 进程状态不可用".to_owned())?;
+        if let Some(child) = inner.child.as_mut() {
+            if child
+                .try_wait()
+                .map_err(|error| format!("无法读取 ComfyUI 进程状态：{error}"))?
+                .is_none()
+            {
+                return Err("ComfyUI 已由 TDCanvas 启动，请先停止后再连接外部实例".to_owned());
+            }
+        }
+        inner.child = None;
+    }
+    if !local_comfy_ready(port).await {
+        return Err(format!("无法连接 127.0.0.1:{port}，请确认 ComfyUI 已启动"));
+    }
+    let status = {
+        let mut inner = state
+            .inner
+            .lock()
+            .map_err(|_| "ComfyUI 进程状态不可用".to_owned())?;
+        inner.generation = inner.generation.wrapping_add(1);
+        inner.phase = EnvironmentPhase::Running;
+        inner.pid = None;
+        inner.port = Some(port);
+        inner.started_at = Some(now_millis());
+        inner.message = None;
+        inner.profile_id = Some(profile.id);
+        inner.connection_kind = EnvironmentConnectionKind::Attached;
+        inner.canceled_prompts.clear();
+        snapshot(&inner)
+    };
+    let _ = fs::remove_file(&state.ownership_path);
+    let _ = app.emit("comfyui-local://status", &status);
+    Ok(status)
+}
+
+#[tauri::command]
 async fn stop_environment(
     state: State<'_, ComfyProcessManager>,
 ) -> Result<EnvironmentStatus, String> {
@@ -624,6 +691,8 @@ async fn stop_environment(
         inner.started_at = None;
         inner.message = None;
         inner.profile_id = None;
+        inner.connection_kind = EnvironmentConnectionKind::Managed;
+        inner.canceled_prompts.clear();
         inner.child.take()
     };
     if let Some(mut child) = child {
@@ -830,6 +899,15 @@ async fn wait_for_execution<R: Runtime>(
     let comfy_root = PathBuf::from(profile.root_directory);
     let started = Instant::now();
     loop {
+        let canceled = state
+            .inner
+            .lock()
+            .map_err(|_| "ComfyUI 进程状态不可用".to_owned())?
+            .canceled_prompts
+            .remove(&prompt_id);
+        if canceled {
+            return Err("ComfyUI 工作流已取消".to_owned());
+        }
         let port = running_profile_port(&state, &profile_id)?;
         let history = local_http_client(Duration::from_secs(30))?
             .get(format!("http://{LOOPBACK_HOST}:{port}/history/{prompt_id}"))
@@ -883,21 +961,62 @@ async fn interrupt_execution(
     prompt_id: String,
 ) -> Result<(), String> {
     let port = running_profile_port(&state, &profile_id)?;
+    state
+        .inner
+        .lock()
+        .map_err(|_| "ComfyUI 进程状态不可用".to_owned())?
+        .canceled_prompts
+        .insert(prompt_id.clone());
     let client = local_http_client(Duration::from_secs(15))?;
-    let queue_result = client
-        .post(format!("http://{LOOPBACK_HOST}:{port}/queue"))
-        .json(&serde_json::json!({ "delete": [prompt_id] }))
+    let queue = client
+        .get(format!("http://{LOOPBACK_HOST}:{port}/queue"))
         .send()
-        .await;
-    let interrupt_result = client
-        .post(format!("http://{LOOPBACK_HOST}:{port}/interrupt"))
-        .json(&serde_json::json!({}))
+        .await
+        .map_err(|error| format!("无法读取 ComfyUI 队列：{error}"))?
+        .error_for_status()
+        .map_err(|error| format!("ComfyUI 队列接口返回错误：{error}"))?
+        .json::<Value>()
+        .await
+        .map_err(|error| format!("无法解析 ComfyUI 队列：{error}"))?;
+    let request = match cancel_action(&queue, &prompt_id) {
+        CancelAction::DeletePending => client
+            .post(format!("http://{LOOPBACK_HOST}:{port}/queue"))
+            .json(&serde_json::json!({ "delete": [prompt_id] })),
+        CancelAction::InterruptRunning => client
+            .post(format!("http://{LOOPBACK_HOST}:{port}/interrupt"))
+            .json(&serde_json::json!({ "prompt_id": prompt_id })),
+        CancelAction::None => return Ok(()),
+    };
+    request
         .send()
-        .await;
-    if queue_result.is_err() && interrupt_result.is_err() {
-        return Err("无法向 ComfyUI 发送停止指令".to_owned());
-    }
+        .await
+        .map_err(|error| format!("无法向 ComfyUI 发送停止指令：{error}"))?
+        .error_for_status()
+        .map_err(|error| format!("ComfyUI 停止接口返回错误：{error}"))?;
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CancelAction {
+    DeletePending,
+    InterruptRunning,
+    None,
+}
+
+fn cancel_action(queue: &Value, prompt_id: &str) -> CancelAction {
+    if queue_contains_prompt(queue.get("queue_pending"), prompt_id) {
+        CancelAction::DeletePending
+    } else if queue_contains_prompt(queue.get("queue_running"), prompt_id) {
+        CancelAction::InterruptRunning
+    } else {
+        CancelAction::None
+    }
+}
+
+fn queue_contains_prompt(entries: Option<&Value>, prompt_id: &str) -> bool {
+    entries
+        .and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(|item| item.get(1).and_then(Value::as_str) == Some(prompt_id)))
 }
 
 fn running_profile_port(state: &ComfyProcessManager, profile_id: &str) -> Result<u16, String> {
@@ -1119,12 +1238,11 @@ async fn cache_comfy_output<R: Runtime>(
             .allow_directory(&directory, true)
             .map_err(|error| format!("无法授权 ComfyUI 视频预览目录：{error}"))?;
     }
-    let direct_target = directory.join(&safe_filename);
     let source = (request.resource_type == "video")
         .then(|| comfy_result_source_path(comfy_root, file_type, subfolder, &safe_filename))
         .flatten();
-    let target = if source.as_ref() == Some(&direct_target) {
-        direct_target
+    let target = if request.resource_type == "video" {
+        run_result_path(&directory, &safe_filename, prompt_id, item_index)
     } else {
         unique_result_path(&directory, &safe_filename, item_index)
     };
@@ -1271,6 +1389,25 @@ fn unique_result_path(directory: &Path, filename: &str, item_index: usize) -> Pa
         .map(|value| format!(".{value}"))
         .unwrap_or_default();
     directory.join(format!("{stem}-{}-{item_index}{extension}", now_millis()))
+}
+
+fn run_result_path(directory: &Path, filename: &str, prompt_id: &str, item_index: usize) -> PathBuf {
+    let source = Path::new(filename);
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("result");
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let filename = format!(
+        "{stem}-{}-{}{extension}",
+        sanitize_path_segment(prompt_id, "prompt"),
+        item_index + 1
+    );
+    unique_result_path(directory, &filename, item_index)
 }
 
 fn mime_from_filename(filename: &str) -> Option<&'static str> {
@@ -1759,6 +1896,7 @@ fn stable_path_hash(root: &Path, python: &Path) -> u64 {
 fn snapshot(inner: &ProcessInner) -> EnvironmentStatus {
     EnvironmentStatus {
         phase: inner.phase.clone(),
+        connection_kind: inner.connection_kind.clone(),
         pid: inner.pid,
         port: inner.port,
         started_at: inner.started_at,
@@ -2037,6 +2175,10 @@ mod tests {
             Some(PathBuf::from("ComfyUI").join("output").join("clips/final").join("clip.mp4"))
         );
         assert!(comfy_result_source_path(Path::new("ComfyUI"), "output", "../escape", "clip.mp4").is_none());
+        assert_eq!(
+            run_result_path(Path::new("ComfyUI/output/画布"), "clip.mp4", "prompt-2", 0),
+            PathBuf::from("ComfyUI/output/画布/clip-prompt-2-1.mp4")
+        );
     }
 
     #[test]
@@ -2049,6 +2191,17 @@ mod tests {
         });
         assert!(execution_failed(&failure));
         assert!(execution_error(&failure).contains("out of memory"));
+    }
+
+    #[test]
+    fn cancels_only_the_requested_queue_entry() {
+        let queue = serde_json::json!({
+            "queue_running": [[7, "running-prompt", {}]],
+            "queue_pending": [[8, "pending-prompt", {}]]
+        });
+        assert_eq!(cancel_action(&queue, "pending-prompt"), CancelAction::DeletePending);
+        assert_eq!(cancel_action(&queue, "running-prompt"), CancelAction::InterruptRunning);
+        assert_eq!(cancel_action(&queue, "other-prompt"), CancelAction::None);
     }
 
     #[cfg(unix)]

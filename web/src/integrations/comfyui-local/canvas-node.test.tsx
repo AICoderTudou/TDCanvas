@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/i18n", () => ({ default: { t: (key: string) => key } }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 import type { ComfyWorkflowDefinition } from "./index";
-import { comfyCanvasPorts, createComfyCanvasNodeSnapshot, createComfyWorkflowCanvasNode, mergeComfyCanvasNodeSnapshot, registerComfyWorkflowCanvasNode } from "./canvas-node";
+import { ComfyWorkflowParameterControl, comfyCanvasPorts, createComfyCanvasNodeSnapshot, createComfyWorkflowCanvasNode, mergeComfyCanvasNodeSnapshot, registerComfyWorkflowCanvasNode } from "./canvas-node";
 
 const definition: ComfyWorkflowDefinition = {
     id: "workflow-rain-city",
@@ -63,6 +65,30 @@ const definition: ComfyWorkflowDefinition = {
 };
 
 describe("ComfyUI workflow canvas node", () => {
+    it("renders imported enum parameters as a dropdown", () => {
+        const html = renderToStaticMarkup(
+            <ComfyWorkflowParameterControl
+                input={{
+                    id: "261:aspect_ratio",
+                    nodeId: "261",
+                    field: "aspect_ratio",
+                    label: "aspect_ratio",
+                    valueType: "enum",
+                    control: "select",
+                    defaultValue: "16:9 (Widescreen)",
+                    required: true,
+                    canvasPort: false,
+                    enumValues: ["1:1 (Square)", "16:9 (Widescreen)", "21:9 (Ultrawide)"],
+                }}
+                value="16:9 (Widescreen)"
+                onChange={vi.fn()}
+            />,
+        );
+
+        expect(html).toContain('role="combobox"');
+        expect(html).toContain("16:9 (Widescreen)");
+    });
+
     it("maps only exposed canvas inputs and outputs to stable named ports", () => {
         const ports = comfyCanvasPorts({
             workflowId: definition.id,

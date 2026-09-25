@@ -7,7 +7,13 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
+- 在 NB-ComfyUI PRO 已启动 `127.0.0.1:8188` 时，ComfyUI 本地页应可通过端口连接该外部实例并打开同一 WebUI；画布提交的任务应出现在共享队列和状态中，点击“断开连接”或退出 TDCanvas 不得结束 NB-ComfyUI PRO 进程。
+- 本地 ComfyUI 任务提交后立即离开原画布，任务应继续运行；完成后重新打开原画布应看到对应结果和 `prompt_id`。两个画布分别提交任务时应进入同一 ComfyUI 串行队列；取消等待项只删除指定 prompt，取消当前运行项才中断执行，其他画布任务保持不变。
+- 画布顶部应可同时保留多个项目标签；切换标签不得用前一画布节点覆盖后一画布，关闭标签不得删除项目或停止其后台 ComfyUI 任务，关闭当前标签后应切到相邻标签或画布列表。
+- 导入或重新保存包含新版 `COMBO` 规格的 ComfyUI 工作流后，`ResolutionSelector.aspect_ratio` 应显示包含 1:1、2:3、3:2、3:4、4:3、9:16、16:9、21:9 的下拉选项，旧式枚举参数仍应正常显示。
 - A ComfyUI media loader used only by optional downstream inputs should be removed from the submitted graph while its canvas port is disconnected, so stale filenames from the imported API JSON are not submitted. Connecting the port should restore the loader and its references; required downstream inputs must never be bypassed.
+- Running the same ComfyUI workflow node three times sequentially should create three playable result nodes and three connections from the same output port. Each result must keep a distinct `comfyuiPromptId` and local path, while earlier results remain unchanged. Pre-submission failure creates no result; post-submission failure or cancellation updates only the current placeholder.
+- Duplicating a canvas node with incoming connections should reconnect the copy to the same upstream nodes without cloning source assets. Clear inputs in the node context menu should remove only that node's incoming connections. Alt-dragging past the movement threshold should duplicate with the same input connections, while Alt-click alone should not duplicate.
 - ComfyUI 工作流参数面板关闭 image、video 或 audio 等媒体输入后，对应画布输入端口及连线应立即隐藏但不删除连接数据；重新打开后应恢复，所有可见输入端口按媒体类型分组并按名称中的数字自然排序对齐。
 - ComfyUI 视频结果应只保存在所选环境的 `output/<画布名>/`：已有 `output` 或 `temp` 文件应移动到该目录，仅能通过 `/view` 获取时应直接写入该目录；结果节点的本地文件路径不得再指向 TDCanvas 的 `comfyui-local/results/<prompt_id>`。
 - An imported ComfyUI workflow node should allow its exposed inputs and outputs to be edited from the parameter panel. Media inputs should offer a Use / Bypass switch; saving should preserve retained values and connections, and remove stale ports, references, and result nodes.

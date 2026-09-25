@@ -22,7 +22,8 @@ vi.mock("./index", () => ({
 
 import { createComfyWorkflowCanvasNode } from "./canvas-node";
 import { readComfyResultBinding } from "./result-nodes";
-import { runComfyWorkflowNode } from "./execution";
+import { runComfyWorkflowNode, stopComfyWorkflowNode } from "./execution";
+import { comfyExecutionManager } from "./execution-manager-store";
 import type { ComfyWorkflowDefinition } from "./index";
 import type { CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -48,6 +49,7 @@ describe("ComfyUI canvas execution", () => {
         mocks.status.mockResolvedValue({ phase: "running", profileId: definition.environmentId });
         mocks.queueWorkflow.mockResolvedValue({ promptId: "prompt-1" });
         mocks.uploadInput.mockResolvedValue({ name: "global-source.png", subfolder: "" });
+        mocks.interruptExecution.mockResolvedValue(undefined);
         mocks.resolveDownloadBlob.mockResolvedValue(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }));
         mocks.waitForExecution.mockResolvedValue({
             promptId: "prompt-1",
@@ -86,6 +88,87 @@ describe("ComfyUI canvas execution", () => {
         expect(results.map((node) => node.metadata?.comfyuiPromptId)).toEqual(["prompt-1", "prompt-2", "prompt-3"]);
         expect(nodes.find((node) => node.id === first.id)?.metadata).toEqual(firstMetadata);
         expect(nodes.find((node) => node.id === source.id)?.metadata).toMatchObject({ status: "success", comfyuiRun: { phase: "succeeded", promptId: "prompt-3" } });
+    });
+
+    it("preserves historical results when a new run fails before submission", async () => {
+        const source = createComfyWorkflowCanvasNode(definition, { x: 400, y: 300 });
+        const nodes: CanvasNodeData[] = [source];
+        const connections: CanvasConnection[] = [];
+        const ctx = createContext(source, nodes, connections);
+
+        await runComfyWorkflowNode(ctx);
+        const historical = nodes.find((node) => readComfyResultBinding(node)?.sourceNodeId === source.id)!;
+        const historicalMetadata = structuredClone(historical.metadata);
+        mocks.queueWorkflow.mockRejectedValueOnce(new Error("submit failed"));
+
+        await runComfyWorkflowNode(ctx);
+
+        expect(nodes.filter((node) => readComfyResultBinding(node)?.sourceNodeId === source.id)).toHaveLength(1);
+        expect(nodes.find((node) => node.id === historical.id)?.metadata).toEqual(historicalMetadata);
+        expect(nodes.find((node) => node.id === source.id)?.metadata).toMatchObject({ status: "error", errorDetails: "submit failed" });
+    });
+
+    it("isolates post-submission failure and cancellation to the current run", async () => {
+        const source = createComfyWorkflowCanvasNode(definition, { x: 400, y: 300 });
+        const nodes: CanvasNodeData[] = [source];
+        const connections: CanvasConnection[] = [];
+        const ctx = createContext(source, nodes, connections);
+
+        await runComfyWorkflowNode(ctx);
+        const historical = nodes.find((node) => readComfyResultBinding(node)?.sourceNodeId === source.id)!;
+        const historicalMetadata = structuredClone(historical.metadata);
+
+        mocks.queueWorkflow.mockResolvedValueOnce({ promptId: "prompt-2" });
+        mocks.waitForExecution.mockRejectedValueOnce(new Error("execution failed"));
+        await runComfyWorkflowNode(ctx);
+
+        const failed = nodes.find((node) => node.metadata?.comfyuiPromptId === "prompt-2")!;
+        expect(failed.metadata).toMatchObject({ status: "error", errorDetails: "execution failed" });
+        expect(nodes.find((node) => node.id === historical.id)?.metadata).toEqual(historicalMetadata);
+
+        let releaseExecution!: (value: Awaited<ReturnType<typeof mocks.waitForExecution>>) => void;
+        mocks.queueWorkflow.mockResolvedValueOnce({ promptId: "prompt-3" });
+        mocks.waitForExecution.mockImplementationOnce(() => new Promise((resolve) => (releaseExecution = resolve)));
+        const running = runComfyWorkflowNode(ctx);
+        await vi.waitFor(() => expect(nodes.some((node) => node.metadata?.comfyuiPromptId === "prompt-3")).toBe(true));
+        await stopComfyWorkflowNode(ctx);
+        releaseExecution({ promptId: "prompt-3", completedAt: 2003, outputs: [] });
+        await running;
+
+        const canceled = nodes.find((node) => node.metadata?.comfyuiPromptId === "prompt-3")!;
+        expect(canceled.metadata).toMatchObject({ status: "idle", comfyuiPromptId: "prompt-3" });
+        expect(nodes.find((node) => node.id === historical.id)?.metadata).toEqual(historicalMetadata);
+        expect(mocks.interruptExecution).toHaveBeenCalledWith(definition.environmentId, "prompt-3");
+    });
+
+    it("creates current-run batch items and marks only its missing outputs", async () => {
+        const batchDefinition: ComfyWorkflowDefinition = {
+            ...definition,
+            outputs: [
+                { id: "9:result", nodeId: "9", resultField: "images", label: "图片", resourceType: "image", canvasPort: true, preview: true },
+                { id: "10:preview", nodeId: "10", resultField: "images", label: "预览", resourceType: "image", canvasPort: true, preview: true },
+            ],
+        };
+        mocks.definition = batchDefinition;
+        mocks.waitForExecution.mockResolvedValueOnce({
+            promptId: "prompt-1",
+            completedAt: 3001,
+            outputs: [
+                { outputId: "9:result", nodeId: "9", itemIndex: 0, resourceType: "image", label: "图片", absolutePath: "C:\\cache\\batch-1.png", filename: "batch-1.png", mimeType: "image/png", bytes: 41 },
+                { outputId: "9:result", nodeId: "9", itemIndex: 1, resourceType: "image", label: "图片", absolutePath: "C:\\cache\\batch-2.png", filename: "batch-2.png", mimeType: "image/png", bytes: 42 },
+            ],
+        });
+        const source = createComfyWorkflowCanvasNode(batchDefinition, { x: 400, y: 300 });
+        const nodes: CanvasNodeData[] = [source];
+        const connections: CanvasConnection[] = [];
+
+        await runComfyWorkflowNode(createContext(source, nodes, connections));
+
+        const current = nodes.filter((node) => node.metadata?.comfyuiPromptId === "prompt-1");
+        expect(current).toHaveLength(3);
+        expect(current.filter((node) => node.metadata?.status === "success")).toHaveLength(2);
+        expect(current.find((node) => readComfyResultBinding(node)?.outputId === "10:preview")?.metadata).toMatchObject({ status: "error", errorDetails: "comfyuiLocal.execution.outputMissing" });
+        expect(current.map((node) => readComfyResultBinding(node)?.itemIndex)).toEqual([0, 0, 1]);
     });
 
     it("gets a generated result from the current canvas without a connection", async () => {
@@ -157,7 +240,14 @@ function createContext(source: CanvasNodeData, nodes: CanvasNodeData[], connecti
             }
         }
     };
+    comfyExecutionManager.registerProject("test-canvas", {
+        getTitle: () => "测试画布",
+        getNodes: () => nodes,
+        getConnections: () => connections,
+        applyOps,
+    });
     return {
+        projectId: "test-canvas",
         canvasTitle: "测试画布",
         node: source,
         theme: {} as CanvasNodeContext["theme"],
